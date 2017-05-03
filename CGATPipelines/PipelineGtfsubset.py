@@ -20,42 +20,85 @@ class SubsetGTF():
 
     def __init__(self, *args, **kwargs):
         pass
-    def gtf2dataframe(self, infile):
 
-        # using the cgat GTF iterator, iterate over the GTF file
+    def makeLineDict(self, line):
+        D = line.asDict()
+        D['chrom'] = line.contig
+        D['source'] = line.source
+        D['feature'] = line.feature
+        D['start'] = line.start
+        D['end'] = line.end
+        D['score'] = line.score
+        D['strand'] = line.strand
+        D['frame'] = line.frame
+
+        return D
+
+    def filterCDS(self, infile, outfile, filteroption):
+        '''
+        '''
         gtf = GTF.iterator(IOTools.openFile(infile, "r"))
 
-        row = []
-        for line in gtf:
-            # access each of the gtf attributes and then store them as
-            # dictionary key/value pairs so a pd DataFrame can be made
-            D = line.asDict()
-            D['chrom'] = line.contig
-            D['source'] = line.source
-            D['feature'] = line.feature
-            D['start'] = line.start
-            D['end'] = line.end
-            D['score'] = line.score
-            D['strand'] = line.strand
-            D['frame'] = line.frame
-            D['attributes'] = line.attributes
-            row.append(D)
+        with IOTools.openFile(outfile, "w") as outf:
+             for line in gtf:
+                 D = self.makeLineDict(line)
+                 if D[filteroption] == "CDS":
+                     outf.write("%s\n" % str(line))
 
-        return pd.DataFrame(row)
+        outf.close()
 
-    def filterDataFrame(self, dataframe):
+    def filterExon(self, infile, outfile, filteroption):
+        '''
+        
+        '''
+        gtf = GTF.iterator(IOTools.openFile(infile, "r"))
 
-        return dataframe[dataframe['feature'] == 'CDS']
+        with IOTools.openFile(outfile, "w") as outf:
+            for line in gtf:
+                D = self.makeLineDict(line)
+                if D[filteroption] == "exon":
+                    outf.write("%s\n" % str(line))
 
-    def reorderDataFrame(self, dataframe):
+    def filterExonCoding(self, infile, outfile, filteroptions):
+        '''
+        
+        '''
 
-        return dataframe[['chrom','source','feature','start','end',
-                   'score','strand','frame', 'attributes']]
+        feature, gene_biotype = filteroptions
 
-    def dataframe2Gtf(self, infile, outfile):
+        gtf = GTF.iterator(IOTools.openFile(infile, "r"))
 
-        dataframe = self.gtf2dataframe(infile)
-        filtering = self.filterDataFrame(dataframe=dataframe)
-        reorder = self.reorderDataFrame(filtering)
+        with IOTools.openFile(outfile, "w") as outf:
+            for line in gtf:
+                D = self.makeLineDict(line)
+                if D[feature] == "exon" and D[gene_biotype] == "protein_coding":
+                    outf.write("%s\n" % str(line))
 
-        reorder.to_csv(outfile, header=False, index=False, compression='gzip')
+    def filterLincExonCoding(self, infile, outfile, filteroptions):
+        '''
+        
+        '''
+
+        feature, gene_biotype = filteroptions
+
+        gtf = GTF.iterator(IOTools.openFile(infile, "r"))
+
+        with IOTools.openFile(outfile, "w") as outf:
+            for line in gtf:
+                D = self.makeLineDict(line)
+                if D[feature] == "exon" and D[gene_biotype] == "lincRNA":
+                    outf.write("%s\n" % str(line))
+
+    def filterNonCodingExonCoding(self, infile, outfile, filteroptions):
+        '''
+        
+        '''
+        feature, gene_biotype = filteroptions
+
+        gtf = GTF.iterator(IOTools.openFile(infile, "r"))
+
+        with IOTools.openFile(outfile, "w") as outf:
+            for line in gtf:
+                D = self.makeLineDict(line)
+                if D[feature] == "exon" and not D[gene_biotype] == "protein_coding":
+                    outf.write("%s\n" % str(line))
