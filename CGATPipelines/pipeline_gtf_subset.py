@@ -12,18 +12,13 @@ Code
 ====
 """
 import sys
-import re
 import os
-import glob
 import sqlite3
 from ruffus import follows, transform, merge, mkdir, files, jobs_limit,\
     suffix, regex, add_inputs
-
-import CGAT.Experiment as E
 import CGATPipelines.Pipeline as P
-import CGAT.IOTools as IOTools
-import CGAT.GTF as GTF
 import CGATPipelines.PipelineGtfsubset as PipelineGtfsubset
+import CGATPipelines.PipelineUCSC as PipelineUCSC
 
 ###################################################
 # Pipeline configuration
@@ -41,6 +36,11 @@ def connect():
     return dbh
 
 
+def connectToUCSC():
+    return PipelineGtfsubset.connectToUCSC(
+        host=PARAMS["ucsc_host"],
+        user=PARAMS["ucsc_user"],
+        database=PARAMS["ucsc_database"])
 # -----------------------------------------------------------------
 # ENSEMBL gene set
 
@@ -165,11 +165,12 @@ def buildCdsTranscript(infile, outfile):
        Filter option set in the piepline.ini as feature column in GTF
        nomenclature
     '''
-    m = PipelineGtfsubset.SubsetGTF()
+    m = PipelineGtfsubset.SubsetGTF(infile)
 
     filteroption = PARAMS['ensembl_cgat_feature']
+    filteritem = ["CDS"]
 
-    m.filterCDS(infile, outfile, filteroption)
+    m.filterGTF(outfile, filteroption, filteritem, operators=None)
 
 
 @files(PARAMS['interface_geneset_ucsc_genome_gtf'],
@@ -191,11 +192,40 @@ def buildExonTranscript(infile, outfile):
        Filter option set in the piepline.ini as feature column in GTF
        nomenclature
     '''
-    m = PipelineGtfsubset.SubsetGTF()
+    m = PipelineGtfsubset.SubsetGTF(infile)
 
     filteroption = PARAMS['ensembl_cgat_feature']
+    filteritem = ["exon"]
 
-    m.filterExon(infile, outfile, filteroption)
+    m.filterGTF(outfile, filteroption, filteritem, operators=None)
+
+@files(PARAMS['interface_geneset_ucsc_genome_gtf'],
+       PARAMS['interface_geneset_coding_exons_gtf'])
+def buildCodingExonTranscript(infile, outfile):
+    '''
+    Output of the coding exon features from abn ENSEMBL gene set
+
+    Takes all of the features from a :term:`gtf` file
+    that are features of ``exon``
+
+    Arguments
+    ---------
+    infile : from ruffus
+       ENSEMBL geneset, filename named in pipeline.ini
+    outfile : from ruffus
+       Output filename named in pipeline.ini
+    filteroption : string
+       Filter option set in the piepline.ini as feature column in GTF
+       nomenclature
+    '''
+    m = PipelineGtfsubset.SubsetGTF(infile)
+
+    filteroption = [PARAMS['ensembl_cgat_feature'],
+                    PARAMS['ensembl_cgat_gene_biotype']]
+    filteritem = ["exon", "protein_coding"]
+
+    m.filterGTF(outfile, filteroption, filteritem, operators="and")
+
 
 @files(PARAMS['interface_geneset_ucsc_genome_gtf'],
        PARAMS['interface_geneset_lincrna_exons_gtf'])
@@ -216,12 +246,14 @@ def buildLincRNAExonTranscript(infile, outfile):
        Filter option set in the piepline.ini as feature column in GTF
        nomenclature
     '''
-    m = PipelineGtfsubset.SubsetGTF()
+    m = PipelineGtfsubset.SubsetGTF(infile)
 
     filteroptions = [PARAMS['ensembl_cgat_feature'],
                      PARAMS['ensembl_cgat_gene_biotype']]
 
-    m.filterLincExonCoding(infile, outfile, filteroptions)
+    filteritem = ["exon", "lincRNA"]
+
+    m.filterGTF(outfile, filteroptions, filteritem, operators="and")
 
 
 @files(PARAMS['interface_geneset_ucsc_genome_gtf'],
@@ -243,12 +275,67 @@ def buildNonCodingExonTranscript(infile, outfile):
        Filter option set in the piepline.ini as feature column in GTF
        nomenclature
     '''
-    m = PipelineGtfsubset.SubsetGTF()
+    m = PipelineGtfsubset.SubsetGTF(infile)
 
     filteroptions = [PARAMS['ensembl_cgat_feature'],
                      PARAMS['ensembl_cgat_gene_biotype']]
+    filteritem = ["exon", "protein_coding"]
 
-    m.filterNonCodingExonCoding(infile, outfile, filteroptions)
+    m.filterGTF(outfile, filteroptions, filteritem, operators="and not")
+
+
+
+# ---------------------------------------------------------------
+# UCSC derived annotations
+@follows(mkdir('ucsc.dir'))
+@files(((None, PARAMS["interface_rna_gff"]), ))
+def importRNAAnnotationFromUCSC(infile, outfile):
+    """This task downloads UCSC repetetive RNA types.
+    """
+    PipelineGtfsubset.getRepeatDataFromUCSC(
+        dbhandle=connectToUCSC(),
+        repclasses=P.asList(PARAMS["ucsc_rnatypes"]),
+        outfile=outfile,
+        remove_contigs_regex=PARAMS["ensembl_remove_contigs"])
+
+
+@follows(mkdir('ucsc.dir'))
+@files(((None, PARAMS["interface_repeats_gff"]), ))
+def importRepeatsFromUCSC(infile, outfile):
+    """This task downloads UCSC repeats types as identified
+    in the configuration file.
+    """
+    PipelineGtfsubset.getRepeatDataFromUCSC(
+        dbhandle=connectToUCSC(),
+        repclasses=P.asList(PARAMS["ucsc_repeattypes"]),
+        outfile=outfile)
+
+# ---------------------------------------------------------------
+# miRBase annotations
+
+@files(PARAMS['mirbase_filename_mir_gff'],
+       PARAMS['interface_geneset_primary_mir_gff'])
+def buildmiRPrimaryTranscript(infile, outfile):
+
+    m = PipelineGtfsubset.SubsetGFF3(infile)
+
+    filteroption = PARAMS['ensembl_cgat_feature']
+    filteritem = ["miRNA_primary_transcript"]
+
+    m.filterGFF3(outfile, filteroption, filteritem)
+
+
+@files(PARAMS['mirbase_filename_mir_gff'],
+       PARAMS['interface_geneset_mir_gff'])
+def buildmiRNonPrimaryTranscript(infile, outfile):
+
+    m = PipelineGtfsubset.SubsetGFF3(infile)
+
+    filteroption = PARAMS['ensembl_cgat_feature']
+    filteritem = ["miRNA"]
+
+    m.filterGFF3(outfile, filteroption, filteritem)
+
 
 if __name__ == "__main__":
     sys.exit(P.main(sys.argv))

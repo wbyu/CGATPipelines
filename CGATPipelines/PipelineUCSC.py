@@ -39,7 +39,7 @@ import CGATPipelines.Pipeline as P
 
 def connectToUCSC(host="genome-mysql.cse.ucsc.edu",
                   user="genome",
-                  database="hg19"):
+                  database=None):
     """connect to UCSC database.
 
     Arguments
@@ -61,6 +61,8 @@ def connectToUCSC(host="genome-mysql.cse.ucsc.edu",
 
     cc = dbhandle.cursor()
     cc.execute("USE %s " % database)
+
+    E.debug("SLV>>> %s" % database)
 
     return dbhandle
 
