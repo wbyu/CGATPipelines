@@ -15,7 +15,7 @@ import sys
 import os
 import sqlite3
 from ruffus import follows, transform, merge, mkdir, files, jobs_limit,\
-    suffix, regex, add_inputs
+    suffix, regex, add_inputs, originate
 import CGATPipelines.Pipeline as P
 import CGATPipelines.PipelineGtfsubset as PipelineGtfsubset
 import CGATPipelines.PipelineUCSC as PipelineUCSC
@@ -241,7 +241,6 @@ def buildNonCodingExonTranscript(infile, outfile):
 
 
 @transform((buildUCSCGeneSet,
-            buildGenomeGeneSet,
             buildCdsTranscript,
             buildExonTranscript,
             buildCodingExonTranscript,
@@ -277,7 +276,7 @@ def loadTranscripts(infile, outfile):
 # ---------------------------------------------------------------
 # UCSC derived annotations
 @follows(mkdir('ucsc.dir'))
-@files(((None, PARAMS["interface_rna_gff"]), ))
+@originate(None, PARAMS["interface_rna_gff"])
 def importRNAAnnotationFromUCSC(infile, outfile):
     """This task downloads UCSC repetetive RNA types.
     """
@@ -289,7 +288,7 @@ def importRNAAnnotationFromUCSC(infile, outfile):
 
 
 @follows(mkdir('ucsc.dir'))
-@files(((None, PARAMS["interface_repeats_gff"]), ))
+@originate(None, PARAMS["interface_repeats_gff"])
 def importRepeatsFromUCSC(infile, outfile):
     """This task downloads UCSC repeats types as identified
     in the configuration file.
@@ -334,8 +333,10 @@ def loadRepeats(infile, outfile):
 # ---------------------------------------------------------------
 # miRBase annotations
 
-@files(PARAMS['mirbase_filename_mir_gff'],
-       PARAMS['interface_geneset_primary_mir_gff'])
+
+@transform(PARAMS['mirbase_filename_mir_gff'],
+           suffix(PARAMS['mirbase_filename_mir_gff']),
+           PARAMS['interface_geneset_primary_mir_gff'])
 def buildmiRPrimaryTranscript(infile, outfile):
 
     m = PipelineGtfsubset.SubsetGFF3(infile)
@@ -345,9 +346,9 @@ def buildmiRPrimaryTranscript(infile, outfile):
 
     m.filterGFF3(outfile, filteroption, filteritem)
 
-
-@files(PARAMS['mirbase_filename_mir_gff'],
-       PARAMS['interface_geneset_mir_gff'])
+@transform(PARAMS['mirbase_filename_mir_gff'],
+           suffix(PARAMS['mirbase_filename_mir_gff']),
+           PARAMS['interface_geneset_mir_gff'])
 def buildmiRNonPrimaryTranscript(infile, outfile):
 
     m = PipelineGtfsubset.SubsetGFF3(infile)
@@ -356,6 +357,7 @@ def buildmiRNonPrimaryTranscript(infile, outfile):
     filteritem = ["miRNA"]
 
     m.filterGFF3(outfile, filteroption, filteritem)
+
 
 # Need to write this once andreas has sorted out the GTF parsing option in pysam
 @transform((buildmiRPrimaryTranscript,
@@ -389,10 +391,9 @@ def loadmiRNATranscripts(infile, outfile):
 
 
 @follows(buildUCSCGeneSet,
-            buildGenomeGeneSet,
-            buildCdsTranscript,
-            buildExonTranscript,
-            buildCodingExonTranscript,
+         buildCdsTranscript,
+         buildExonTranscript,
+         buildCodingExonTranscript,
          buildNonCodingExonTranscript,
          buildLincRNAExonTranscript,
          loadTranscripts,
