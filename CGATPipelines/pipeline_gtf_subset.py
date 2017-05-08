@@ -90,7 +90,7 @@ def buildUCSCGeneSet(infile, outfile):
 
     P.run()
 
-@follows(buildUCSCGeneSet)
+
 @files(PARAMS["ensembl_filename_gtf"],
        PARAMS['interface_geneset_ucsc_genome_gtf'])
 def buildGenomeGeneSet(infile, outfile):
@@ -142,8 +142,9 @@ def buildGenomeGeneSet(infile, outfile):
     P.run()
 
 
-@files(PARAMS['interface_geneset_ucsc_genome_gtf'],
-       PARAMS['interface_geneset_cds_gtf'])
+@transform(buildUCSCGeneSet,
+           suffix("ensembl.dir/geneset_all.gtf.gz"),
+           PARAMS['interface_geneset_cds_gtf'])
 def buildCdsTranscript(infile, outfile):
     '''
     Output the CDS features from an ENSEMBL gene set
@@ -165,6 +166,7 @@ def buildCdsTranscript(infile, outfile):
        Filter option set in the piepline.ini as feature column in GTF
        nomenclature
     '''
+
     m = PipelineGtfsubset.SubsetGTF(infile)
 
     filteroption = PARAMS['ensembl_cgat_feature']
@@ -172,9 +174,9 @@ def buildCdsTranscript(infile, outfile):
 
     m.filterGTF(outfile, filteroption, filteritem, operators=None)
 
-
-@files(PARAMS['interface_geneset_ucsc_genome_gtf'],
-       PARAMS['interface_geneset_exons_gtf'])
+@transform(buildUCSCGeneSet,
+           suffix("ensembl.dir/geneset_all.gtf.gz"),
+           PARAMS['interface_geneset_exons_gtf'])
 def buildExonTranscript(infile, outfile):
     '''
     Output of the exon features from abn ENSEMBL gene set
@@ -199,8 +201,9 @@ def buildExonTranscript(infile, outfile):
 
     m.filterGTF(outfile, filteroption, filteritem, operators=None)
 
-@files(PARAMS['interface_geneset_ucsc_genome_gtf'],
-       PARAMS['interface_geneset_coding_exons_gtf'])
+@transform(buildUCSCGeneSet,
+           suffix("ensembl.dir/geneset_all.gtf.gz"),
+           PARAMS['interface_geneset_coding_exons_gtf'])
 def buildCodingExonTranscript(infile, outfile):
     '''
     Output of the coding exon features from abn ENSEMBL gene set
@@ -227,8 +230,9 @@ def buildCodingExonTranscript(infile, outfile):
     m.filterGTF(outfile, filteroption, filteritem, operators="and")
 
 
-@files(PARAMS['interface_geneset_ucsc_genome_gtf'],
-       PARAMS['interface_geneset_lincrna_exons_gtf'])
+@transform(buildUCSCGeneSet,
+           suffix("ensembl.dir/geneset_all.gtf.gz"),
+           PARAMS['interface_geneset_lincrna_exons_gtf'])
 def buildLincRNAExonTranscript(infile, outfile):
     '''
     Output of the lincRNA features from an ENSEMBL gene set
@@ -256,8 +260,9 @@ def buildLincRNAExonTranscript(infile, outfile):
     m.filterGTF(outfile, filteroptions, filteritem, operators="and")
 
 
-@files(PARAMS['interface_geneset_ucsc_genome_gtf'],
-       PARAMS['interface_geneset_noncoding_exons_gtf'])
+@transform(buildUCSCGeneSet,
+           suffix("ensembl.dir/geneset_all.gtf.gz"),
+           PARAMS['interface_geneset_noncoding_exons_gtf'])
 def buildNonCodingExonTranscript(infile, outfile):
     '''
     Output of the non-coding exon features from an ENSEMBL gene set
@@ -282,6 +287,7 @@ def buildNonCodingExonTranscript(infile, outfile):
     filteritem = ["exon", "protein_coding"]
 
     m.filterGTF(outfile, filteroptions, filteritem, operators="and not")
+
 
 
 @transform((buildUCSCGeneSet,
@@ -405,7 +411,7 @@ def buildmiRNonPrimaryTranscript(infile, outfile):
 @transform((buildmiRPrimaryTranscript,
             buildmiRNonPrimaryTranscript),
            suffix(".gff3.gz"), "_gff3.load")
-def loadTranscripts(infile, outfile):
+def loadmiRNATranscripts(infile, outfile):
     '''load transcripts from a GTF file into the database.
 
     The table will be indexed on ``gene_id`` and ``transcript_id``
@@ -430,6 +436,21 @@ def loadTranscripts(infile, outfile):
     | %(load_statement)s
     > %(outfile)s'''
     P.run()
+
+
+@follows(buildUCSCGeneSet,
+            buildGenomeGeneSet,
+            buildCdsTranscript,
+            buildExonTranscript,
+            buildCodingExonTranscript,
+         buildNonCodingExonTranscript,
+         buildLincRNAExonTranscript,
+         loadTranscripts,
+         loadRepeats)
+def full():
+    '''build all targets - A dummy task to run the pipeline to
+    completion.'''
+    pass
 
 if __name__ == "__main__":
     sys.exit(P.main(sys.argv))
