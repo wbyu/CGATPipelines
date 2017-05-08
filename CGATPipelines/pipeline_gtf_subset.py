@@ -65,62 +65,12 @@ def buildUCSCGeneSet(infile, outfile):
        geneset in :term:`gtf` format.
 
     '''
+    
     statement = ['''zcat %(infile)s
     | grep 'transcript_id'
     | cgat gff2gff
     --method=sanitize
     --sanitize-method=ucsc
-    --log=%(outfile)s.log
-    ''']
-
-    if PARAMS["ensembl_remove_contigs"]:
-        # in quotation marks to avoid confusion with shell special
-        # characters such as ( and |
-        statement.append(
-            ''' --contig-pattern="%(ensembl_remove_contigs)s" ''')
-
-    statement.append(
-        '''
-        | cgat gtf2gtf
-        --method=set-gene_biotype-to-source
-        --log=%(outfile)s.log
-        | gzip > %(outfile)s ''')
-
-    statement = " ".join(statement)
-
-    P.run()
-
-
-@files(PARAMS["ensembl_filename_gtf"],
-       PARAMS['interface_geneset_ucsc_genome_gtf'])
-def buildGenomeGeneSet(infile, outfile):
-    '''output sanitized ENSEMBL geneset and removal of all contigs
-    that are not present in the downloaded UCSC genome.
-
-    This method outputs an ENSEMBL gene set after some sanitizing steps:
-
-    1. Chromosome names are changed to the UCSC convention.
-    2. Transcripts that are not part of the chosen genome assembly
-       are removed.
-    3. Chromosomes that match the regular expression specified in
-       the configuration file are removed.
-
-    Arguments
-    ---------
-    infile : string
-       ENSEMBL geneset in :term:`gtf` format.
-    outfile : string
-       geneset in :term:`gtf` format.
-
-    '''
-
-    statement = ['''zcat %(infile)s
-    | grep 'transcript_id'
-    | cgat gff2gff
-    --method=sanitize
-    --sanitize-method=genome
-    --skip-missing
-    --genome-file=%(genome_dir)s/%(genome)s
     --log=%(outfile)s.log
     ''']
 
