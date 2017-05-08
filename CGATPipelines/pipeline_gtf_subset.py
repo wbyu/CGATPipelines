@@ -284,6 +284,39 @@ def buildNonCodingExonTranscript(infile, outfile):
     m.filterGTF(outfile, filteroptions, filteritem, operators="and not")
 
 
+@transform((buildUCSCGeneSet,
+            buildGenomeGeneSet,
+            buildCdsTranscript,
+            buildExonTranscript,
+            buildCodingExonTranscript,
+            buildNonCodingExonTranscript,
+            buildLincRNAExonTranscript),
+           suffix(".gtf.gz"), "_gtf.load")
+def loadTranscripts(infile, outfile):
+    '''load transcripts from a GTF file into the database.
+
+    The table will be indexed on ``gene_id`` and ``transcript_id``
+
+    Arguments
+    ---------
+    infile : string
+       ENSEMBL geneset in :term:`gtf` format.
+    outfile : string
+       Logfile. The table name is derived from `outfile`.
+
+    '''
+    load_statement = P.build_load_statement(
+        P.toTable(outfile),
+        options="--add-index=gene_id "
+        "--add-index=transcript_id "
+        "--allow-empty-file ")
+
+    statement = '''
+    gunzip < %(infile)s
+    | cgat gtf2tsv
+    | %(load_statement)s
+    > %(outfile)s'''
+    P.run()
 
 # ---------------------------------------------------------------
 # UCSC derived annotations
@@ -309,6 +342,38 @@ def importRepeatsFromUCSC(infile, outfile):
         dbhandle=connectToUCSC(),
         repclasses=P.asList(PARAMS["ucsc_repeattypes"]),
         outfile=outfile)
+
+@jobs_limit(PARAMS.get("jobs_limit_db", 1), "db")
+@transform((importRepeatsFromUCSC,
+            importRNAAnnotationFromUCSC),
+           suffix(".gff.gz"), "_gff.load")
+def loadRepeats(infile, outfile):
+    """load genomic locations of repeats into database.
+
+    This method loads the genomic coordinates (contig, start, end)
+    and the repeat name into the database.
+
+    Arguments
+    ---------
+    infile : string
+        Input filename in :term:`gff` with repeat annotations.
+    outfile : string
+        Output filename with logging information. The table name is
+        derived from outfile.
+
+    """
+    load_statement = P.build_load_statement(
+        P.toTable(outfile),
+        options="--add-index=class "
+        "--header-names=contig,start,stop,class")
+
+    statement = """zcat %(infile)s
+    | cgat gff2bed --set-name=class
+    | grep -v "#"
+    | cut -f1,2,3,4
+    | %(load_statement)s
+    > %(outfile)s"""
+    P.run()
 
 # ---------------------------------------------------------------
 # miRBase annotations
@@ -336,6 +401,35 @@ def buildmiRNonPrimaryTranscript(infile, outfile):
 
     m.filterGFF3(outfile, filteroption, filteritem)
 
+# Need to write this once andreas has sorted out the GTF parsing option in pysam
+@transform((buildmiRPrimaryTranscript,
+            buildmiRNonPrimaryTranscript),
+           suffix(".gff3.gz"), "_gff3.load")
+def loadTranscripts(infile, outfile):
+    '''load transcripts from a GTF file into the database.
+
+    The table will be indexed on ``gene_id`` and ``transcript_id``
+
+    Arguments
+    ---------
+    infile : string
+       ENSEMBL geneset in :term:`gtf` format.
+    outfile : string
+       Logfile. The table name is derived from `outfile`.
+
+    '''
+    load_statement = P.build_load_statement(
+        P.toTable(outfile),
+        options="--add-index=gene_id "
+        "--add-index=transcript_id "
+        "--allow-empty-file ")
+
+    statement = '''
+    zcat %(infile)s
+    | cgat gtf2tsv
+    | %(load_statement)s
+    > %(outfile)s'''
+    P.run()
 
 if __name__ == "__main__":
     sys.exit(P.main(sys.argv))
