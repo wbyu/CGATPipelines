@@ -44,10 +44,13 @@ def connectToUCSC():
 # -----------------------------------------------------------------
 # ENSEMBL gene set
 
-#### check this code because there may be a problem using set-genebiotype_to source
+# check this code because there may be a problem using set-genebiotype_to source
+# Update - jacub is going to help work on this section
 
 @follows(mkdir('ensembl.dir'))
-@files(PARAMS["ensembl_filename_gtf"], PARAMS['interface_geneset_all_gtf'])
+@transform(PARAMS["ensembl_filename_gtf"],
+           regex("(\S+)"),
+           r"%s" % PARAMS['interface_geneset_all_gtf'])
 def buildUCSCGeneSet(infile, outfile):
     '''output sanitized ENSEMBL geneset.
 
