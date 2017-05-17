@@ -68,20 +68,21 @@ def buildUCSCGeneSet(infile, outfile):
        geneset in :term:`gtf` format.
 
     '''
-    
+
     statement = ['''zcat %(infile)s
     | grep 'transcript_id'
     | cgat gff2gff
     --method=sanitize
     --sanitize-method=ucsc
+    --assembly-report="%(ncbi_assembly_report)s"
     --log=%(outfile)s.log
     ''']
 
-    if PARAMS["ensembl_remove_contigs"]:
+    if PARAMS["ncbi_remove_contigs"]:
         # in quotation marks to avoid confusion with shell special
         # characters such as ( and |
         statement.append(
-            ''' --contig-pattern="%(ensembl_remove_contigs)s" ''')
+            ''' --contig-pattern="%(ncbi_remove_contigs)s" ''')
 
     statement.append(
         '''
