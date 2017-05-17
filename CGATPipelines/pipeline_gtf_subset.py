@@ -5,7 +5,7 @@ Gtf_subset pipeline
 
 This pipeline generates a number of GTF files that can be used with downstream
 CGAT pipelines. The user will download a GTF from ENSEMBL and then the GTF is
-parsed and filtered. 
+parsed and filtered.
 
 ====
 Code
@@ -41,11 +41,11 @@ def connectToUCSC():
         host=PARAMS["ucsc_host"],
         user=PARAMS["ucsc_user"],
         database=PARAMS["ucsc_database"])
-# -----------------------------------------------------------------
-# ENSEMBL gene set
 
-# check this code because there may be a problem using set-genebiotype_to source
-# Update - jacub is going to help work on this section
+###################################################################
+# ENSEMBL gene set
+###################################################################
+
 
 @follows(mkdir('ensembl.dir'))
 @transform(PARAMS["ensembl_filename_gtf"],
@@ -108,7 +108,6 @@ def buildCdsTranscript(infile, outfile):
 
     Note - we have not filtered on gene_biotype because some of the CDS
     are classified as polymorphic_pseudogene.
-        
 
     Arguments
     ---------
@@ -127,6 +126,7 @@ def buildCdsTranscript(infile, outfile):
     filteritem = ["CDS"]
 
     m.filterGTF(outfile, filteroption, filteritem, operators=None)
+
 
 @transform(buildUCSCGeneSet,
            suffix("ensembl.dir/geneset_all.gtf.gz"),
@@ -154,6 +154,7 @@ def buildExonTranscript(infile, outfile):
     filteritem = ["exon"]
 
     m.filterGTF(outfile, filteroption, filteritem, operators=None)
+
 
 @transform(buildUCSCGeneSet,
            suffix("ensembl.dir/geneset_all.gtf.gz"),
@@ -243,7 +244,6 @@ def buildNonCodingExonTranscript(infile, outfile):
     m.filterGTF(outfile, filteroptions, filteritem, operators="and not")
 
 
-
 @transform((buildUCSCGeneSet,
             buildCdsTranscript,
             buildExonTranscript,
@@ -277,8 +277,11 @@ def loadTranscripts(infile, outfile):
     > %(outfile)s'''
     P.run()
 
-# ---------------------------------------------------------------
+################################################################
 # UCSC derived annotations
+################################################################
+
+
 @follows(mkdir('ucsc.dir'))
 @originate(None, PARAMS["interface_rna_gff"])
 def importRNAAnnotationFromUCSC(infile, outfile):
@@ -301,6 +304,7 @@ def importRepeatsFromUCSC(infile, outfile):
         dbhandle=connectToUCSC(),
         repclasses=P.asList(PARAMS["ucsc_repeattypes"]),
         outfile=outfile)
+
 
 @jobs_limit(PARAMS.get("jobs_limit_db", 1), "db")
 @transform((importRepeatsFromUCSC,
@@ -350,6 +354,7 @@ def buildmiRPrimaryTranscript(infile, outfile):
 
     m.filterGFF3(outfile, filteroption, filteritem)
 
+
 @transform(PARAMS['mirbase_filename_mir_gff'],
            suffix(PARAMS['mirbase_filename_mir_gff']),
            PARAMS['interface_geneset_mir_gff'])
@@ -363,7 +368,8 @@ def buildmiRNonPrimaryTranscript(infile, outfile):
     m.filterGFF3(outfile, filteroption, filteritem)
 
 
-# Need to write this once andreas has sorted out the GTF parsing option in pysam
+# Need to write this once andreas has sorted out the GTF parsing option in
+# pysam
 @transform((buildmiRPrimaryTranscript,
             buildmiRNonPrimaryTranscript),
            suffix(".gff3.gz"), "_gff3.load")

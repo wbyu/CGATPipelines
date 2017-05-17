@@ -1,5 +1,5 @@
 """
-PipelineGtfsubset.py - Tasks for GTF subsetting 
+PipelineGtfsubset.py - Tasks for GTF subsetting
 ===============================================
 
 Reference
@@ -52,17 +52,18 @@ class SubsetGTF():
                     filteroption1, filteroption2 = filteroption
                     if operators == "and":
                         if D[filteroption1] == filter1 and \
-                       D[filteroption2] == filter2:
+                           D[filteroption2] == filter2:
                             outf.write("%s\n" % str(line))
                     elif operators == "and not":
                         if D[filteroption1] == filter1 and not\
-                   D[filteroption2] == filter2:
+                           D[filteroption2] == filter2:
                             outf.write("%s\n" % str(line))
 
                 else:
                     pass
 
         outf.close()
+
 
 class SubsetGFF3():
 
@@ -94,8 +95,6 @@ class SubsetGFF3():
         outf.close()
 
 
-
-        
 def connectToUCSC(host="genome-mysql.cse.ucsc.edu",
                   user="genome",
                   database=None):
