@@ -133,7 +133,7 @@ def buildCdsTranscript(infile, outfile):
            PARAMS['interface_geneset_exons_gtf'])
 def buildExonTranscript(infile, outfile):
     '''
-    Output of the exon features from abn ENSEMBL gene set
+    Output of the exon features from an ENSEMBL gene set
 
     Takes all of the features from a :term:`gtf` file
     that are features of ``exon``
@@ -277,26 +277,49 @@ def loadTranscripts(infile, outfile):
     > %(outfile)s'''
     P.run()
 
+    
+@P.add_doc(PipelineGtfsubset.buildFlatGeneSet)
+@transform(buildUCSCGeneSet,
+           suffix("ensembl.dir/geneset_all.gtf.gz"),
+           PARAMS['interface_geneset_flat_gtf'])
+def buildFlatGeneSet(infile, outfile):
+    PipelineGtfsubset.buildFlatGeneSet(infile, outfile)
+
+
+@P.add_doc(PipelineGtfsubset.loadGeneInformation)
+@jobs_limit(PARAMS.get("jobs_limit_db", 1), "db")
+@follows(mkdir('ensembl.dir'))
+@transform(PARAMS["ensembl_filename_gtf"],
+           suffix(PARAMS["ensembl_filename_gtf"]),
+           "ensembl.dir/gene_info.load")
+def loadGeneInformation(infile, outfile):
+    '''load the transcript set.'''
+    PipelineGtfsubset.loadGeneInformation(infile, outfile)
+
+
+# Next need to add identifyProteinCodingGenes, buildIntronGeneModels
+# aim is to generate the intron gtf here for use in bamstats
+
 ################################################################
 # UCSC derived annotations
 ################################################################
 
 
 @follows(mkdir('ucsc.dir'))
-@originate(None, PARAMS["interface_rna_gff"])
-def importRNAAnnotationFromUCSC(infile, outfile):
+@originate(PARAMS["interface_rna_gff"])
+def importRNAAnnotationFromUCSC(outfile):
     """This task downloads UCSC repetetive RNA types.
     """
     PipelineGtfsubset.getRepeatDataFromUCSC(
         dbhandle=connectToUCSC(),
         repclasses=P.asList(PARAMS["ucsc_rnatypes"]),
         outfile=outfile,
-        remove_contigs_regex=PARAMS["ensembl_remove_contigs"])
+        remove_contigs_regex=PARAMS["ncbi_remove_contigs"])
 
 
 @follows(mkdir('ucsc.dir'))
-@originate(None, PARAMS["interface_repeats_gff"])
-def importRepeatsFromUCSC(infile, outfile):
+@originate(PARAMS["interface_repeats_gff"])
+def importRepeatsFromUCSC(outfile):
     """This task downloads UCSC repeats types as identified
     in the configuration file.
     """
@@ -399,6 +422,20 @@ def loadmiRNATranscripts(infile, outfile):
     > %(outfile)s'''
     P.run()
 
+
+##################################################################
+## Generation of BED files from GTF files
+##################################################################
+
+@P.add_doc(PipelineGtfsubset.buildGenomicContext)
+@follows(mkdir('bed.dir'))
+#  also add tasks from miRNA
+@merge((importRepeatsFromUCSC,
+        importRNAAnnotationFromUCSC,
+        buildUCSCGeneSet),
+       PARAMS["interface_genomic_context_bed"])
+def buildGenomicContext(infiles, outfile):
+    PipelineGtfsubset.buildGenomicContext(infiles, outfile)
 
 @follows(buildUCSCGeneSet,
          buildCdsTranscript,

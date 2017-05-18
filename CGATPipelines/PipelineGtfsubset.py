@@ -202,3 +202,191 @@ def getRepeatDataFromUCSC(dbhandle,
     P.run()
 
     os.unlink(tmpfilename)
+
+
+def buildGenomicContext(infiles, outfile, distance=10):
+# Need to add miRNA into this function
+    '''build a :term:`bed` formatted file with genomic context.
+    The output is a bed formatted file, annotating genomic segments
+    according to whether they are any of the ENSEMBL annotations.
+    The function also adds the RNA and repeats annotations from the UCSC.
+    The annotations can be partially or fully overlapping.
+    The annotations can be partially or fully overlapping. Adjacent
+    features (less than 10 bp apart) of the same type are merged.
+    Arguments
+    ---------
+    infiles : list
+       A list of input files to generate annotations from. The contents are
+       1. ``repeats``, a :term:`gff` formatted file with repeat annotations
+       2. ``rna``, a :term:`gff` formatted file with small, repetetive
+          RNA annotations
+       3. ``annotations``, a :term:`gtf` formatted file with genomic
+            annotations, see :func:`annotateGenome`.
+       4. ``geneset_flat``, a flattened gene set in :term:`gtf` format, see
+            :func:`buildFlatGeneSet`.
+    outfile : string
+       Output filename in :term:`bed` format.
+    distance : int
+       Merge adajcent features of the same type within this distance.
+    '''
+
+    repeats_gff, rna_gff, annotations_gtf = infiles
+
+    tmpfile = P.getTempFilename(shared=True)
+    tmpfiles = ["%s_%i" % (tmpfile, x) for x in range(3)]
+
+    # add ENSEMBL annotations
+    statement = """
+    zcat %(annotations_gtf)s
+    | cgat gtf2gtf
+    --method=sort --sort-order=gene
+    | cgat gtf2gtf
+    --method=merge-exons --log=%(outfile)s.log
+    | cgat gff2bed
+    --set-name=gene_biotype --is-gtf
+    --log=%(outfile)s.log
+    | sort -k 1,1 -k2,2n
+    | cgat bed2bed --method=merge --merge-by-name
+    --merge-distance=%(distance)i --log=%(outfile)s.log
+    > %(tmpfile)s_0
+    """
+    P.run()
+
+    # rna
+    statement = '''
+    zcat %(repeats_gff)s %(rna_gff)s
+    | cgat gff2bed --set-name=family --is-gtf -v 0
+    | sort -k1,1 -k2,2n
+    | cgat bed2bed --method=merge --merge-by-name
+    --merge-distance=%(distance)i --log=%(outfile)s.log
+    > %(tmpfile)s_1'''
+    P.run()
+
+    # add aggregate intervals for repeats
+    statement = '''
+    zcat %(repeats_gff)s
+    | cgat gff2bed --set-name=family --is-gtf -v 0
+    | awk -v OFS="\\t" '{$4 = "repeats"; print}'
+    | sort -k1,1 -k2,2n
+    | cgat bed2bed --method=merge --merge-by-name
+    --merge-distance=%(distance)i --log=%(outfile)s.log
+    > %(tmpfile)s_2'''
+    P.run()
+
+    # add aggregate intervals for rna
+    statement = '''
+    zcat %(rna_gff)s
+    | cgat gff2bed --set-name=family --is-gtf -v 0
+    | awk -v OFS="\\t" '{$4 = "repetetive_rna"; print}'
+    | sort -k1,1 -k2,2n
+    | cgat bed2bed --method=merge --merge-by-name
+    --merge-distance=%(distance)i --log=%(outfile)s.log
+    > %(tmpfile)s_3 '''
+    P.run()
+
+    # sort and merge
+    # remove strand information as bedtools
+    # complains if there are annotations with
+    # different number of field
+    files = " ".join(tmpfiles)
+    statement = '''
+    sort --merge -k1,1 -k2,2n %(files)s
+    | cut -f 1-4
+    | gzip
+    > %(outfile)s
+    '''
+    P.run()
+
+    for x in tmpfiles:
+        os.unlink(x)
+
+def buildFlatGeneSet(infile, outfile):
+    '''build a flattened gene set.
+    All transcripts in a gene are merged into a single transcript by
+    combining overlapping exons.
+    Arguments
+    ---------
+    infile : string
+       ENSEMBL geneset in :term:`gtf` format.
+    outfile : string
+       Output filename in :term:`gtf` format.
+    '''
+    # sort by contig+gene, as in refseq gene sets, genes on
+    # chr_random might contain the same identifier as on chr
+    # and hence merging will fail.
+    # --permit-duplicates is set so that these cases will be
+    # assigned new merged gene ids.
+
+    statement = """gunzip
+    < %(infile)s
+    | awk '$3 == "exon"'
+    | grep "transcript_id"
+    | cgat gtf2gtf
+    --method=sort
+    --sort-order=contig+gene
+    --log=%(outfile)s.log
+    | cgat gtf2gtf
+    --method=merge-exons
+    --permit-duplicates
+    --log=%(outfile)s.log
+    | cgat gtf2gtf
+    --method=set-transcript-to-gene
+    --log=%(outfile)s.log
+    | cgat gtf2gtf
+    --method=sort
+    --sort-order=position+gene
+    --log=%(outfile)s.log
+    | gzip
+    > %(outfile)s
+        """
+    P.run()
+
+
+def loadGeneInformation(infile, outfile, only_proteincoding=False):
+    '''load gene-related attributes from :term:`gtf` file into database.
+    This method takes transcript-associated features from an
+    :term:`gtf` file and collects the gene-related attributes in the
+    9th column of the gtf file, ignoring exon_id, transcript_id,
+    transcript_name, protein_id and exon_number.
+    Arguments
+    ---------
+    infile : string
+       ENSEMBL geneset in :term:`gtf` format.
+    outfile : string
+       Output filename, contains logging information. The
+       table name is derived from the filename of outfile.
+    only_proteincoding : bool
+       If True, only consider protein coding genes.
+    '''
+
+    job_memory = "4G"
+    table = P.toTable(outfile)
+
+    if only_proteincoding:
+        filter_cmd = """cgat gtf2gtf
+        --method=filter --filter-method=proteincoding""" % PARAMS
+    else:
+        filter_cmd = "cat"
+
+    load_statement = P.build_load_statement(
+        table,
+        options="--add-index=gene_id "
+        "--add-index=gene_name"
+        "--map=gene_name:str")
+
+    statement = '''
+    zcat %(infile)s
+    | %(filter_cmd)s
+    | grep "transcript_id"
+    | cgat gtf2gtf
+    --method=sort --sort-order=gene+transcript
+    | cgat gtf2tsv
+    --attributes-as-columns --output-only-attributes -v 0
+    | python %(toolsdir)s/csv_cut.py
+    --remove exon_id transcript_id transcript_name protein_id exon_number
+    | %(pipeline_scriptsdir)s/hsort 1
+    | uniq
+    | %(load_statement)s
+    > %(outfile)s'''
+
+    P.run()
