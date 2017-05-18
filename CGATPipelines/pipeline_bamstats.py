@@ -438,7 +438,7 @@ def buildTranscriptLevelReadCounts(infiles, outfile):
 @transform(intBam,
            regex("BamFiles.dir/(.*).bam$"),
 ## need to add buildIntronGeneModels to the GTF_subset before this will work
-#           add_inputs(buildIntronGeneModels),
+           add_inputs(PARAMS["annotations_interface_geneset_intron_gtf"]),
            r"Paired_QC.dir/\1.intron_counts.tsv.gz")
 def buildIntronLevelReadCounts(infiles, outfile):
     '''count reads in gene models
@@ -534,7 +534,7 @@ def buildTranscriptProfiles(infiles, outfile):
 @P.add_doc(PipelineBamStats.buildPicardRnaSeqMetrics)
 @transform(intBam,
            regex("BamFiles.dir/(.*).bam$"),
-           add_inputs(PARAMS["annotations_interface_geneset_flat_gtf"]),
+           add_inputs(PARAMS["annotations_interface_ref_flat"]),
            r"Picard_stats.dir/\1.picard_rna_metrics")
 def buildPicardRnaSeqMetrics(infiles, outfile):
     '''Get duplicate stats from picard RNASeqMetrics '''

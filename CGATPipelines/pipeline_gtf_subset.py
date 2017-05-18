@@ -16,6 +16,7 @@ import os
 import sqlite3
 from ruffus import follows, transform, merge, mkdir, files, jobs_limit,\
     suffix, regex, add_inputs, originate
+import CGAT.IOTools as IOTools
 import CGATPipelines.Pipeline as P
 import CGATPipelines.PipelineGtfsubset as PipelineGtfsubset
 import CGATPipelines.PipelineUCSC as PipelineUCSC
@@ -286,6 +287,25 @@ def buildFlatGeneSet(infile, outfile):
     PipelineGtfsubset.buildFlatGeneSet(infile, outfile)
 
 
+@follows(mkdir("geneset.dir"))
+@transform(buildUCSCGeneSet,
+           suffix("ensembl.dir/geneset_all.gtf.gz"),
+           PARAMS["interface_ref_flat"])
+def buildRefFlat(infile, outfile):
+    '''build flat geneset for Picard RnaSeqMetrics.
+    '''
+
+    tmpflat = P.getTempFilename(".")
+
+    statement = '''
+    gtfToGenePred -genePredExt -geneNameAsName2 %(infile)s %(tmpflat)s;
+    paste <(cut -f 12 %(tmpflat)s) <(cut -f 1-10 %(tmpflat)s)
+    > %(outfile)s
+    '''
+    P.run()
+    os.unlink(tmpflat)
+
+
 @P.add_doc(PipelineGtfsubset.loadGeneInformation)
 @jobs_limit(PARAMS.get("jobs_limit_db", 1), "db")
 @follows(mkdir('ensembl.dir'))
@@ -296,6 +316,94 @@ def loadGeneInformation(infile, outfile):
     '''load the transcript set.'''
     PipelineGtfsubset.loadGeneInformation(infile, outfile)
 
+
+@originate("protein_coding_gene_ids.tsv")
+def identifyProteinCodingGenes(outfile):
+    '''Output a list of proteing coding gene identifiers
+
+    Identify protein coding genes from the annotation database table
+    and output the gene identifiers
+
+    Parameters
+    ----------
+    oufile : str
+       Output file of :term:`gtf` format
+    annotations_interface_table_gene_info : str
+       :term:`PARAMS`. Database table name for gene information
+
+    '''
+
+    dbh = connect()
+
+    select = dbh.execute("""SELECT DISTINCT gene_id
+    FROM gene_info
+    WHERE gene_biotype = 'protein_coding'""" % locals())
+
+    with IOTools.openFile(outfile, "w") as outf:
+        outf.write("gene_id\n")
+        outf.write("\n".join((x[0] for x in select)) + "\n")
+
+## check this function output to make sure it is outputting introns- I changed some inputs
+@follows(mkdir("geneset.dir"))
+@transform(buildFlatGeneSet,
+           regex(".*"),
+           add_inputs(identifyProteinCodingGenes,
+                      buildExonTranscript),
+           PARAMS['interface_geneset_intron_gtf'])
+def buildIntronGeneModels(infiles, outfile):
+    '''build protein-coding intron-transcipts
+
+    Retain the protein coding genes from the input gene set and
+    convert the exonic sequences to intronic sequences. 10 bp is
+    truncated on either end of an intron and need to have a minimum
+    length of 100. Introns from nested genes might overlap, but all
+    exons are removed.
+
+    Parameters
+    ----------
+    infiles : list
+    infiles[0] : str
+       Input filename in :term:`gtf` format
+    infiles[1] : str
+       Input filename in :term:`tsv` format
+
+    outfile: str
+       Output filename in :term:`gtf` format
+
+    annotations_interface_geneset_exons_gtf: str, PARAMS
+       Filename for :term:`gtf` format file containing gene set exons
+
+    '''
+
+
+    infile, genes_tsv, filename_exons = infiles
+
+    statement = '''
+    zcat %(infile)s
+    | cgat gtf2gtf
+    --method=filter
+    --map-tsv-file=%(genes_tsv)s
+    --log=%(outfile)s.log
+    | cgat gtf2gtf
+    --method=sort
+    --sort-order=gene
+    | cgat gtf2gtf
+    --method=exons2introns
+    --intron-min-length=100
+    --intron-border=10
+    --log=%(outfile)s.log
+    | cgat gff2gff
+    --method=crop
+    --crop-gff-file=%(filename_exons)s
+    --log=%(outfile)s.log
+    | cgat gtf2gtf
+    --method=set-transcript-to-gene
+    --log=%(outfile)s.log
+    | awk -v OFS="\\t" -v FS="\\t" '{$3="exon"; print}'
+    | gzip
+    > %(outfile)s
+    '''
+    P.run()
 
 # Next need to add identifyProteinCodingGenes, buildIntronGeneModels
 # aim is to generate the intron gtf here for use in bamstats

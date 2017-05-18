@@ -1162,4 +1162,3 @@ def buildPicardRnaSeqMetrics(infiles, strand, outfile):
     '''
     P.run()
     os.unsetenv("CGAT_JAVA_OPTS")
-
