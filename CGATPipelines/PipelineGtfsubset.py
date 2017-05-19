@@ -205,7 +205,7 @@ def getRepeatDataFromUCSC(dbhandle,
 
 
 def buildGenomicContext(infiles, outfile, distance=10):
-# Need to add miRNA into this function
+    # Need to add miRNA into this function
     '''build a :term:`bed` formatted file with genomic context.
     The output is a bed formatted file, annotating genomic segments
     according to whether they are any of the ENSEMBL annotations.
@@ -299,6 +299,7 @@ def buildGenomicContext(infiles, outfile, distance=10):
 
     for x in tmpfiles:
         os.unlink(x)
+
 
 def buildFlatGeneSet(infile, outfile):
     '''build a flattened gene set.

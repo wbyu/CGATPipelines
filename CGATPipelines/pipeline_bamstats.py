@@ -122,6 +122,7 @@ PARAMS.update(P.peekParameters(
 # -----------------------------------------------
 # Utility functions
 
+
 def connect():
     '''utility function to connect to database.
 
@@ -181,7 +182,7 @@ SEQUENCEFILES_REGEX = regex(
 
 
 #########################################################################
-## Count reads as some QC targets require it
+# Count reads as some QC targets require it
 #########################################################################
 
 
@@ -202,7 +203,7 @@ def countReads(infile, outfile):
 
 
 #########################################################################
-## QC tasks start here
+# QC tasks start here
 #########################################################################
 
 @follows(mkdir("BamFiles.dir"))
@@ -214,12 +215,13 @@ def intBam(infile, outfile):
     If there is no sequence quality then make a softlink. Picard tools
     has an issue when quality score infomation is missing'''
 
-    if PARAMS["bam_sequence_stipped"] == True:
+    if PARAMS["bam_sequence_stipped"] is True:
         PipelineBamStats.addPseudoSequenceQuality(infile,
-                                              outfile)
+                                                  outfile)
     else:
         PipelineBamStats.copyBamFile(infile,
                                      outfile)
+
 
 @follows(mkdir("Picard_stats.dir"))
 @P.add_doc(PipelineBamStats.buildPicardAlignmentStats)
@@ -314,6 +316,7 @@ def buildBAMStats(infiles, outfile):
 
     P.run()
 
+
 @P.add_doc(PipelineBamStats.summarizeTagsWithinContext)
 @transform(intBam,
            regex("BamFiles.dir/(.*).bam$"),
@@ -338,9 +341,9 @@ def buildIdxStats(infile, outfile):
 
     P.run()
 
-#------------------------------------------------------------------
+# ------------------------------------------------------------------
 # QC specific to spliced mapping
-#------------------------------------------------------------------
+# ------------------------------------------------------------------
 
 
 @follows(mkdir("Paired_QC.dir"))
@@ -379,7 +382,6 @@ def buildExonValidation(infiles, outfile):
     '''
 
     P.run()
-
 
 
 @active_if(SPLICED_MAPPING)
@@ -434,10 +436,10 @@ def buildTranscriptLevelReadCounts(infiles, outfile):
 
     P.run()
 
+
 @active_if(SPLICED_MAPPING)
 @transform(intBam,
            regex("BamFiles.dir/(.*).bam$"),
-## need to add buildIntronGeneModels to the GTF_subset before this will work
            add_inputs(PARAMS["annotations_interface_geneset_intron_gtf"]),
            r"Paired_QC.dir/\1.intron_counts.tsv.gz")
 def buildIntronLevelReadCounts(infiles, outfile):
@@ -482,6 +484,7 @@ def buildIntronLevelReadCounts(infiles, outfile):
     '''
 
     P.run()
+
 
 @active_if(SPLICED_MAPPING)
 @transform(intBam,
@@ -548,9 +551,8 @@ def buildPicardRnaSeqMetrics(infiles, outfile):
     PipelineBamStats.buildPicardRnaSeqMetrics(infiles, strand, outfile)
 
 
-
 ##########################################################################
-## Database loading statements
+# Database loading statements
 ##########################################################################
 
 
@@ -579,6 +581,7 @@ def loadBAMStats(infiles, outfile):
     ''' load bam statistics into bam_stats table '''
     PipelineBamStats.loadBAMStats(infiles, outfile)
 
+
 @P.add_doc(PipelineBamStats.loadSummarizedContextStats)
 @jobs_limit(PARAMS.get("jobs_limit_db", 1), "db")
 @follows(loadBAMStats)
@@ -606,6 +609,7 @@ def loadIdxStats(infiles, outfile):
         Logfile. The table name will be derived from `outfile`.'''
 
     PipelineBamStats.loadIdxstats(infiles, outfile)
+
 
 @jobs_limit(PARAMS.get("jobs_limit_db", 1), "db")
 @active_if(SPLICED_MAPPING)
@@ -637,7 +641,6 @@ def loadExonValidation(infiles, outfile):
         P.load(infile + ".overrun.gz", o)
 
 
-
 @P.add_doc(PipelineBamStats.loadPicardRnaSeqMetrics)
 @jobs_limit(PARAMS.get("jobs_limit_db", 1), "db")
 @merge(buildPicardRnaSeqMetrics, ["picard_rna_metrics.load",
@@ -649,6 +652,7 @@ def loadPicardRnaSeqMetrics(infiles, outfiles):
 # ---------------------------------------------------
 # Generic pipeline tasks
 # These tasks allow ruffus to pipeline tasks together
+
 
 @follows(loadPicardStats,
          loadPicardDuplicationStats,

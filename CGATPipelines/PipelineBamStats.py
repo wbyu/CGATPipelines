@@ -106,6 +106,7 @@ def copyBamFile(infile, outfile):
 
     P.run()
 
+
 def buildPicardAlignmentStats(infile, outfile, genome_file):
     '''run picard:CollectMultipleMetrics
     Arguments
@@ -328,6 +329,7 @@ def summarizeTagsWithinContext(tagfile,
     '''
 
     P.run()
+
 
 def loadPicardMetrics(infiles, outfile, suffix,
                       pipeline_suffix=".picard_stats",
@@ -809,9 +811,11 @@ def loadIdxstats(infiles, outfile):
         total_reads = df.unmapped.sum() + df.mapped.sum()
         total_mapped_reads = df.mapped.sum()
 
-        reformatted_df = pd.DataFrame([['total_mapped_reads', total_mapped_reads],
-                                      ['total_reads', total_reads],
-                                      ['track', track]], columns=(['region', 'mapped']))
+        reformatted_df = pd.DataFrame([['total_mapped_reads',
+                                        total_mapped_reads],
+                                       ['total_reads', total_reads],
+                                       ['track', track]],
+                                      columns=(['region', 'mapped']))
 
         # reformat the df
         df = df.append(reformatted_df, ignore_index=True)

@@ -278,7 +278,7 @@ def loadTranscripts(infile, outfile):
     > %(outfile)s'''
     P.run()
 
-    
+
 @P.add_doc(PipelineGtfsubset.buildFlatGeneSet)
 @transform(buildUCSCGeneSet,
            suffix("ensembl.dir/geneset_all.gtf.gz"),
@@ -343,7 +343,9 @@ def identifyProteinCodingGenes(outfile):
         outf.write("gene_id\n")
         outf.write("\n".join((x[0] for x in select)) + "\n")
 
-## check this function output to make sure it is outputting introns- I changed some inputs
+# check this function output to make sure it is outputting introns- I changed some inputs
+
+
 @follows(mkdir("geneset.dir"))
 @transform(buildFlatGeneSet,
            regex(".*"),
@@ -374,7 +376,6 @@ def buildIntronGeneModels(infiles, outfile):
        Filename for :term:`gtf` format file containing gene set exons
 
     '''
-
 
     infile, genes_tsv, filename_exons = infiles
 
@@ -532,7 +533,7 @@ def loadmiRNATranscripts(infile, outfile):
 
 
 ##################################################################
-## Generation of BED files from GTF files
+# Generation of BED files from GTF files
 ##################################################################
 
 @P.add_doc(PipelineGtfsubset.buildGenomicContext)
@@ -544,6 +545,7 @@ def loadmiRNATranscripts(infile, outfile):
        PARAMS["interface_genomic_context_bed"])
 def buildGenomicContext(infiles, outfile):
     PipelineGtfsubset.buildGenomicContext(infiles, outfile)
+
 
 @follows(buildUCSCGeneSet,
          buildCdsTranscript,
