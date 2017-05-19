@@ -636,6 +636,16 @@ def loadExonValidation(infiles, outfile):
         o = "%s_overrun.load" % track
         P.load(infile + ".overrun.gz", o)
 
+
+
+@P.add_doc(PipelineBamStats.loadPicardRnaSeqMetrics)
+@jobs_limit(PARAMS.get("jobs_limit_db", 1), "db")
+@merge(buildPicardRnaSeqMetrics, ["picard_rna_metrics.load",
+                                  "picard_rna_histogram.load"])
+def loadPicardRnaSeqMetrics(infiles, outfiles):
+    '''merge alignment stats into single tables.'''
+    PipelineBamStats.loadPicardRnaSeqMetrics(infiles, outfiles)
+
 # ---------------------------------------------------
 # Generic pipeline tasks
 @follows()
