@@ -648,7 +648,15 @@ def loadPicardRnaSeqMetrics(infiles, outfiles):
 
 # ---------------------------------------------------
 # Generic pipeline tasks
-@follows()
+# These tasks allow ruffus to pipeline tasks together
+
+@follows(loadPicardStats,
+         loadPicardDuplicationStats,
+         loadBAMStats,
+         loadContextStats,
+         loadIdxStats,
+         loadExonValidation,
+         loadPicardRnaSeqMetrics)
 def full():
     pass
 

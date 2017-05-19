@@ -8,6 +8,7 @@ Reference
 import CGAT.Experiment as E
 import os
 import re
+import gzip
 import CGAT.IOTools as IOTools
 import CGAT.BamTools as BamTools
 import CGATPipelines.Pipeline as P
