@@ -9,6 +9,7 @@ import CGAT.Experiment as E
 import os
 import re
 import gzip
+import pysam
 import CGAT.IOTools as IOTools
 import CGAT.BamTools as BamTools
 import CGATPipelines.Pipeline as P
@@ -17,16 +18,117 @@ import pandas as pd
 PICARD_MEMORY = "5G"
 
 
-def getNumReadsFromReadsFile(infile):
-    '''get number of reads from a .nreads file.'''
-    with IOTools.openFile(infile) as inf:
-        line = inf.readline()
-        if not line.startswith("nreads"):
-            raise ValueError(
-                "parsing error in file '%s': "
-                "expected first line to start with 'nreads'")
-        nreads = int(line[:-1].split("\t")[1])
-    return nreads
+def getStrandSpecificity(infile, outfile, iterations):
+
+    outfile = IOTools.openFile(outfile, "w")
+    samfile = pysam.Samfile(infile)
+
+    n = 0
+
+    # initialise counts for each library type
+    MSR = 0
+    MSF = 0
+    ISF = 0
+    ISR = 0
+    OSF = 0
+    OSR = 0
+    SR = 0
+    SF = 0
+
+    reads_processed = set()
+
+    for read in samfile:
+
+        n += 1
+        if n <= int(iterations):
+
+            # to handle paired end reads:
+            if read.is_paired and read.is_proper_pair:
+                if read.qname in reads_processed:
+                    pass
+                else:
+                
+                    # get attributes of read
+                    read_start = read.reference_start
+                    read_end = read.reference_end
+                    read_neg = read.is_reverse
+
+
+                    # specify which read is R1 and which is R2:
+                    # specify which read is R1 and which is R2:
+                    if read.is_read1 == True:
+                        R1_is_reverse = read.is_reverse
+                        R1_reference_start = read.reference_start
+                        
+                        R2_is_reverse = read.mate_is_reverse
+                        R2_reference_start = read.next_reference_start
+                    else:
+                        R1_is_reverse = read.mate_is_reverse
+                        R1_reference_start = read.next_reference_start
+                    
+                        R2_is_reverse = read.is_reverse
+                        R2_reference_start = read.reference_start
+
+                        # Decision tree to specify strandness:
+                        # potential to convert this to a machine learning
+                        # decision tree algorithm in the future:
+                    if R1_is_reverse == True:
+
+                        if R2_is_reverse == True:
+
+                            MSF += 1
+                        else:
+                            if R2_reference_start - R1_reference_start >= 0:
+                                OSR += 1
+                            else:
+                                ISR += 1
+
+                    else:
+
+                        if R2_is_reverse == True:
+                            if R1_reference_start - R2_reference_start >=0:
+                                OSF += 1
+                            else:
+                                ISF += 1
+                        else:
+                            MSR += 1
+            else:
+                if read.is_reverse:
+                    SR += 1
+                else:
+                    SF += 1
+        else:
+            break
+    total = MSR + ISR + OSR + ISF + MSF + OSF + SF + SR
+
+    def total_percent(strand, total):
+        return float(strand)/float(total)*100
+
+    MSR_total = total_percent(MSR, total)
+    ISR_total = total_percent(ISR, total)
+    OSR_total = total_percent(OSR, total)
+    ISF_total = total_percent(ISF, total)
+    MSF_total = total_percent(MSF, total)
+    OSF_total = total_percent(OSF, total)
+    SF_total = total_percent(SF, total)
+    SR_total = total_percent(SR, total)
+
+    outfile.write("MSR:%s\tISR:%s\tOSR:%s\tISF:%s\tMSF:%s\tOSF:%s\n" % \
+        (MSR_total, ISR_total, OSR_total, ISF_total, MSF_total, OSF_total))
+    outfile.write("SF:%s\tSR:%s\n" % (SF_total, SR_total))
+
+
+# I think this function is no longer used - check
+#def getNumReadsFromReadsFile(infile):
+#    '''get number of reads from a .nreads file.'''
+#    with IOTools.openFile(infile) as inf:
+#        line = inf.readline()
+#        if not line.startswith("nreads"):
+#            raise ValueError(
+#                "parsing error in file '%s': "
+#                "expected first line to start with 'nreads'")
+#        nreads = int(line[:-1].split("\t")[1])
+#    return nreads
 
 
 def buildPicardInsertSizeStats(infile, outfile, genome_file):

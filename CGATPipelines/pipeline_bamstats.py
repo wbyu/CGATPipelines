@@ -201,6 +201,24 @@ def countReads(infile, outfile):
 
     P.run()
 
+########################################################################
+#
+########################################################################
+
+@follows(mkdir("StrandSpec.dir"))
+@transform(SEQUENCEFILES,
+           SEQUENCEFILES_REGEX,
+           r"StrandSpec.dir/\1.strand")
+def strandSpecificity(infile, outfile):
+    '''This function will determine the strand specificity of your library
+    from the bam file'''
+
+    iterations = "1000000"
+
+    PipelineBamStats.getStrandSpecificity(infile,
+                                          outfile,
+                                          iterations)
+
 
 #########################################################################
 # QC tasks start here
