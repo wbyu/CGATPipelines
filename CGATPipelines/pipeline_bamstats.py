@@ -673,8 +673,17 @@ def loadPicardRnaSeqMetrics(infiles, outfiles):
 @follows(loadPicardRnaSeqMetrics)
 @merge(countReads, "count_reads.load")
 def loadCountReads(infiles, outfile):
-    ''' load context mapping statistics into context_stats table '''
+    ''' load read counts count_reads table '''
     PipelineBamStats.loadCountReads(infiles, outfile)
+
+#@P.add_doc(PipelineBamStats.loadTranscriptProfile)
+@jobs_limit(PARAMS.get("jobs_limit_db", 1), "db")
+@follows(loadCountReads)
+@merge(buildTranscriptProfiles, "transcript_profile.load")
+def loadTranscriptProfile(infiles, outfile):
+    ''' merge transcript profiles into a single table'''
+    PipelineBamStats.loadTranscriptProfile(infiles, outfile)
+
 # ---------------------------------------------------
 # Generic pipeline tasks
 # These tasks allow ruffus to pipeline tasks together

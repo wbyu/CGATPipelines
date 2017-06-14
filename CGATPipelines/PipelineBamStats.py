@@ -17,6 +17,16 @@ import pandas as pd
 
 PICARD_MEMORY = "5G"
 
+def getNumReadsFromReadsFile(infile):
+    '''get number of reads from a .nreads file.'''
+    with IOTools.openFile(infile) as inf:
+        line = inf.readline()
+        if not line.startswith("nreads"):
+            raise ValueError(
+                "parsing error in file '%s': "
+                "expected first line to start with 'nreads'")
+        nreads = int(line[:-1].split("\t")[1])
+    return nreads
 
 def getStrandSpecificity(infile, outfile, iterations):
 
@@ -433,6 +443,61 @@ def summarizeTagsWithinContext(tagfile,
     P.run()
 
 
+def loadTranscriptProfile(infiles, outfile,
+                          suffix="transcript_profile",
+                          tablename=None):
+    '''load transcript profiles into one table.
+    Arguments
+    ---------
+    infiles : string
+        Filenames of files with matrix from bam2geneprofile. Each file
+        corresponds to a different track.
+    outfile : string
+        Logfile.
+    suffix : string
+        Suffix to append to table name.
+    pipeline_suffix : string
+        Suffix to remove from track name.
+    tablename : string
+        Tablename to use. If unset, the table name will be derived
+        from `outfile` and suffix as ``toTable(outfile) + "_" +
+        suffix``.
+    '''
+
+    if not tablename:
+        tablename = "%s" % (suffix)
+
+    outf = P.getTempFile(".")
+
+    table_count = 0
+    table_join = None
+
+    for infile in infiles:
+
+        matrix_file = str(infile) + ".geneprofileabsolutedistancefromthreeprimeend.matrix.tsv.gz"
+        name = P.snip(os.path.basename(infile), ".transcriptprofile.gz")
+
+        table = pd.read_csv(matrix_file, sep="\t")
+        table.rename(columns={'none': name}, inplace=True)
+        table.drop(["area", "counts", "background"], axis=1, inplace=True)
+
+        if table_count == 0:
+            table_join = table
+            table_count += 1
+        else:
+            table_join = table.merge(table_join,
+                                     on=["bin", "region", "region_bin"],
+                                     how="left")
+    table_join.to_csv(outf, sep="\t", index=False)
+
+    outf.close()
+    
+    P.load(infile=outf.name,
+           outfile=outfile,
+           tablename=tablename,
+           options="--add-index=bin")
+
+    os.unlink(outf.name)
 
 def loadCountReads(infiles, outfile,
                    suffix="nreads",
@@ -442,7 +507,7 @@ def loadCountReads(infiles, outfile,
     Arguments
     ---------
     infiles : string
-        Filenames of files with picard metric number of reads. Each file
+        Filenames of files with number of reads per sample. Each file
         corresponds to a different track.
     outfile : string
         Logfile.
@@ -1026,13 +1091,16 @@ def loadSummarizedContextStats(infiles,
     """
     P.run()
 
-    def mergeAndFilterGTF(infile, outfile, logfile,
-                          genome,
-                          max_intron_size=None,
-                          remove_contigs=None,
-                          rna_file=None):
+# dont know if this is used anymore
 
-        '''sanitize transcripts file for cufflinks analysis.
+
+def mergeAndFilterGTF(infile, outfile, logfile,
+                      genome,
+                      max_intron_size=None,
+                      remove_contigs=None,
+                      rna_file=None):
+
+    '''sanitize transcripts file for cufflinks analysis.
     Merge exons separated by small introns (< 5bp).
     Transcripts will be ignored that
        * have very long introns (`max_intron_size`) (otherwise,
