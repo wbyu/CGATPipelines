@@ -433,6 +433,58 @@ def summarizeTagsWithinContext(tagfile,
     P.run()
 
 
+
+def loadCountReads(infiles, outfile,
+                   suffix="nreads",
+                   pipeline_suffix=".nreads",
+                   tablename=None):
+    '''load read counts.
+    Arguments
+    ---------
+    infiles : string
+        Filenames of files with picard metric number of reads. Each file
+        corresponds to a different track.
+    outfile : string
+        Logfile.
+    suffix : string
+        Suffix to append to table name.
+    pipeline_suffix : string
+        Suffix to remove from track name.
+    tablename : string
+        Tablename to use. If unset, the table name will be derived
+        from `outfile` and suffix as ``toTable(outfile) + "_" +
+        suffix``.
+    '''
+
+    if not tablename:
+        tablename = "%s_%s" % (P.toTable(outfile), suffix)
+
+    outf = P.getTempFile(".")
+
+    outf.write("%s\t%s\n" % ("track", "nreads"))
+
+    for filename in infiles:
+        track = P.snip(os.path.basename(filename), pipeline_suffix)
+
+        if not os.path.exists(filename):
+            E.warn("File %s missing" % filename)
+            continue
+
+        lines = IOTools.openFile(filename, "r").readlines()
+
+        for line in lines:
+            count = line.split("\t")[1]
+            outf.write("%s\t%s\n" % (track, count))
+
+    outf.close()
+
+    P.load(infile=outf.name,
+           outfile=outfile,
+           tablename=tablename,
+           options="--add-index=track")
+
+    os.unlink(outf.name)
+
 def loadPicardMetrics(infiles, outfile, suffix,
                       pipeline_suffix=".picard_stats",
                       tablename=None):
