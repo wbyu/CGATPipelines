@@ -3,20 +3,39 @@
 Gtf_subset pipeline
 ===================
 
-This pipeline generates a number of GTF files that can be used with downstream
-CGAT pipelines. The user will download a GTF from ENSEMBL and then the GTF is
-parsed and filtered.In addition to downloading an ensembl GTF the user will
-need to download an assembly report for their specific genome and add it to the
-directory the pipeline is ran.
-
 Overview
 ========
 
+This pipeline generates a number of annotations that can be used with
+downstream CGAT pipelines. The user will download a GTF from ENSEMBL
+and then the GTF is parsed and filtered.In addition to downloading an
+ensembl GTF the user will need to download an assembly report for their
+specific genome and add it to the directory the pipeline is ran.
+
+Common to all of the annotations generated in this pipeline is that they
+are genomic - i.e. they are genomic intervals or relate to genomic intervals.
+Thus, annotations are tied to a particular version of the genome. This is
+parameterised within the pipeline.ini configuration file. The pipeline
+follows two principle releases: the UCSC_ genome assembly and an ENSEMBL_
+geneset version.
+
+Usage
+=====
+
+See :ref:`PipelineSettingUp` and :ref:`PipelineRunning` on general
+information how to use CGAT pipelines.
+
 Principle targets
 -----------------
+full
+
+
 
 Configuration
 -------------
+
+The :file:`pipeline.ini` needs to be edited so that it points to the
+appropriate locations of the auxiliary files.
 
 
 On top of the default CGAT setup, the pipeline requires the following
@@ -24,10 +43,14 @@ software to be in the path:
 
 Input
 -----
-This pipeline requires a Ensembl GTF and an assembly report.
+
+This pipeline requires a Ensembl GTF, mirBase GFF3 file and an assembly report.
 
 Ensembl GTF:
-    This can be downloaded from ...
+    This can be downloaded from http://www.ensembl.org/info/data/ftp/index.html
+    Note: CGAT pipelines use the UCSC GTF convention (chr naming of contigs)
+    and therefore the GTF is sanitized to the UCSC convention. As part of this
+    process an ncbi assembly report needs to be specified (see below).
 
 Assembly report:
     This is downloaded from the ncbi assembly page for your specific genome.
@@ -36,36 +59,187 @@ Assembly report:
         From the database tab select assembly and add your genome into the
         search bar i.e. hg19.
         Then click the link "Download the full sequence report"
-        Add it to the folder where the pipeline will be ran
+        Add it to the folder where the pipeline will be ran, the file is
+        for hg38 is called "GRCh38.p10_assembly_report.txt".
+
+miRbase GFF3:
+   This can be downloaded from miRbase http://www.mirbase.org/ftp.shtml.
+   A path to the :term:`GFF3` file needs to be specified in the pipelin.ini
+   configuration file. Make sure that the genome build version of the GFF3
+   annotation file matches the ENSEMBL genome.
+
+Running
+-------
+
+The pipeline can be run as any other CGAT pipeline, but as its purpose
+is to provide a set of annotation that can be used by other pipelines
+therefore there is an etiquette to be followed:
+
+Using the pipeline results
+--------------------------
+
+The gtf_subset pipeline provides an interface for presenting its
+results to other pipelines. The interface is defined in the file
+:file:`pipeline.ini`. For example::
+
+   [interface]
+   # fasta file with cdna sequences
+   cdna_fasta=ensembl.dir/cdna.fasta
+
+The ini file of pipeline annotations can be loaded into the parameter
+dictionary of your own pipeline::
+
+    PARAMS.update(P.peekParameters(
+         PARAMS["annotations_dir"],
+         "pipeline_annotations.py",
+         prefix="annotations_"),
+         update_interface=True)
+
+Parameters from the gtf_subset pipeline are now accessible via the
+``annotations_`` prefix. As a result, the file
+:file:`ensembl.dir/cdna.fasta` can be accessed as::
+
+    PARAMS['annotations_cdna_fasta']
 
 
+Working with non-ENSEMBL species
+--------------------------------
 
+:doc:`pipeline_gtf_subset` is very much wedded to annotations in ENSEMBL-
+and UCSC_. Using a non-ENSEMBL species or non-UCSC species is possible by
+building ENSEMBL- or UCSC-like input files. Even so, annotations that are
+downloaded from the ENSEMBL or UCSC database will not be built. You will
+thus need to ask if it is worth the effort.
+
+As other pipelines will depend on the annotations in this pipeline it is
+necessary to set up a :doc:`pipeline_gtf_subset` stub. To do so, simply
+build the config files by running::
+
+   python <SRC>pipeline_annotations.py config
+
+and create the files that are being used in the downstream pipeline
+explicitely (for example, for protein coding genes)::
+
+   mkdir ensembl.dir
+   cp <MYDATADIR>/my_gtf_geneset.gtf.gz ensembl.dir/geneset_coding.gtf.gz
 
 
 Pipeline output
 ===============
 
+The results of the computation are all stored in an sqlite relational
+database file csvdb or as compressed files in genomic formats in the pipeline
+directories. Output files are grouped by sections listed below.
+
+The sections correspond to primary targets in the pipeline, i.e., to
+build all annotations in the section ``assembly`` type::
+
+   python <SRC>pipeline_annotations.py make assembly
+
+
+section: ensembl
+----------------
+
+geneset_all.gtf.gz
+   The full gene set after reconciling with assembly. Chromosomes names are
+   renamed to be consistent with the assembly and some chromosomes
+   are optionally removed. This file is the starting point for
+   all annotations derived from the ENSEMBL geneset.
+
+geneset_cds.gtf.gz
+   A :term:`gtf` formatted file with only the CDS parts of transcripts.
+   This set will naturally include only coding transcripts. UTR regions
+   have been removed.
+
+geneset_exons.gtf.gz
+   A :term:`gtf` formatted file with only the exon parts of transcripts.
+   This set includes both coding and non-coding transcripts. Coding
+   transcripts span both the UTR and the CDS.
+
+geneset_coding_exons.gtf.gz
+   :term:`gtf` file with exon parts of protein coding transcripts.
+   All other features are removed. These are all features annotated
+   as "protein_coding" in the ENSEMBL gtf file.
+
+geneset_noncoding_exons.gtf.gz
+   :term:`gtf` file with exon parts of non-coding transcripts
+   all other features are removed. These are all transcripts not
+   annotated as "protein_coding" in the ENSEMBL gtf file.
+
+geneset_lincrna_exons.gtf.gz
+   :term:`gtf` file with exon parts of lincRNA transcripts. These
+   are transcripts annotated as "lincRNA" in the ENSEMBL gtf file.
+
+geneset_flat.gtf.gz
+   A :term:`gtf` formatted file of flattened gene
+   models. All overlapping transcripts have been merged. This set
+   includes both coding and non-coding transcripts.
+
+geneset_introns.gtf.gz
+   A :term:`gtf` formatted file containing all intron features. All
+   protein coding genes are retained and their exonic sequences are
+   removed to retain introns from nested genes that may overlap.
+
+section: mirbase
+----------------
+
+miRNA_non_primary_transcripts.gff3.gz
+   A :term:`gff3` formatted file containing all of the non primary miRNA
+   transcripts from mirbase
+
+miRNA_primary_transcripts.gff3.gz
+   A :term:`GFF3` formatted file containing all of the primery miRNA
+   transcripts from miRbase.
+
+section: ucsc
+-------------
+
+repeats.gff.gz
+   :term:`gff` formatted file with structural/complex repeats
+
+rna.gff.gz
+   :term:`gff` formatted file with ribosomal rna annotations
+
+section: geneset
+----------------
+Annotations derived from the ENSEMBL gene set. Annotations in
+this section have been computed from the ENSEMBL gene set.
+Results are in the directory :file:`geneset.dir`.
+
+ref_flat.txt
+   This creates a flat reference file from geneset_flat.gtf.gz
+   for use in picard tools RNAseqmetrics.
+
+section: bed
+------------
+
+This directory contains bed files that are generated from other annotations
+in this pipeline.
+
+genomic_context.bed.gz
+   bed-formatted file with genomic context
+
+Database design
+---------------
+
+Tables in the database usually represent genomic features such as
+transcripts, genes or chromosomes. These are identified by the
+following columns:
+
++--------------------+-----------------------------------------+
+|*Column*            |*Content*                                |
++--------------------+-----------------------------------------+
+|transcript_id       |ENSEMBL transcript identifier            |
++--------------------+-----------------------------------------+
+|gene_id             |ENSEMBL gene id                          |
++--------------------+-----------------------------------------+
+|contig              |Chromosome name                          |
++--------------------+-----------------------------------------+
+
 Example
 =======
 
-
-
-
-
-
-
-
-
-
-
-
-
-Requirements:
-
-
-
-
-
+**Supply example data**
 
 
 ====
@@ -531,6 +705,7 @@ def loadRepeats(infile, outfile):
     > %(outfile)s"""
     P.run()
 
+
 # ---------------------------------------------------------------
 # miRBase annotations
 
@@ -539,6 +714,15 @@ def loadRepeats(infile, outfile):
            suffix(PARAMS['mirbase_filename_mir_gff']),
            PARAMS['interface_geneset_primary_mir_gff'])
 def buildmiRPrimaryTranscript(infile, outfile):
+
+    '''
+    This function will subset a miRbase annotation gff3 file.The GFF3
+    file can be downloaded from miRbase. Make sure the annotation matches
+    the genome build that you are using.
+
+    This function will subset the GFF3 file by selecting annotations that are
+    labled "miRNA_primary_transcript"
+    '''
 
     m = PipelineGtfsubset.SubsetGFF3(infile)
 
@@ -552,6 +736,15 @@ def buildmiRPrimaryTranscript(infile, outfile):
            suffix(PARAMS['mirbase_filename_mir_gff']),
            PARAMS['interface_geneset_mir_gff'])
 def buildmiRNonPrimaryTranscript(infile, outfile):
+
+    '''
+    This function will subset a miRbase annotation gff3 file.The GFF3
+    file can be downloaded from miRbase. Make sure the annotation matches
+    the genome build that you are using.
+
+    This function will subset the GFF3 file by selecting annotations that are
+    labled "miRNA". This will subset all of the non primary transcripts.
+    '''
 
     m = PipelineGtfsubset.SubsetGFF3(infile)
 
