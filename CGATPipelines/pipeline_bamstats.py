@@ -108,7 +108,7 @@ Pipeline output
 
 The major output of the pipeline is the database file :file:`csvdb`.
 
-SQL query of this database forms the basis of the final reports. 
+SQL query of this database forms the basis of the final reports.
 
 The following reports are generated as part of running:
 
@@ -730,6 +730,7 @@ def loadPicardRnaSeqMetrics(infiles, outfiles):
 def loadCountReads(infiles, outfile):
     ''' load read counts count_reads table '''
     PipelineBamStats.loadCountReads(infiles, outfile)
+
 
 @P.add_doc(PipelineBamStats.loadTranscriptProfile)
 @jobs_limit(PARAMS.get("jobs_limit_db", 1), "db")
