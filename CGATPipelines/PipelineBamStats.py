@@ -1,19 +1,43 @@
 """
+================================================
 PipelineBamStats.py - Tasks for QC'ing Bam Files
 ================================================
+
+:Author: Adam Cribbs
+:Release: $Id$
+:Date: |today|
+:Tags: Python
+
+Perfroming stats on a bam file is an important task in quality control
+of `.bam` files. The majority of tools focus on quality checking fastq files,
+however mapping QC should be performed to assess the quality of the alignment
+accross the whole genome. This module provides utility functions to abstract
+some of these variations.
+
+
+
+Requirements:
+* picardtools >= 1.106
+* cgat tools
+* bamstats >=1.22
+* pandas >= 0.18.0
+
 Reference
 ---------
 """
 
-import CGAT.Experiment as E
+# load modules
 import os
 import re
 import gzip
 import pysam
+import pandas as pd
+
+# load CGAT specific modules
+import CGAT.Experiment as E
 import CGAT.IOTools as IOTools
 import CGAT.BamTools as BamTools
 import CGATPipelines.Pipeline as P
-import pandas as pd
 
 PICARD_MEMORY = "5G"
 
@@ -30,6 +54,23 @@ def getNumReadsFromReadsFile(infile):
 
 def getStrandSpecificity(infile, outfile, iterations):
 
+    '''
+    This code will determine the strand specificity of your reads
+    for calculating library strandness.
+
+    The nomencalture used is documented in the salmon documentation:
+    http://salmon.readthedocs.io/en/latest/library_type.html
+
+    The code relies heavily on pysam to determin read orientation.
+    
+    For single-end data:
+    Determining which read the strand is on is straightforward using pysam
+    function .is_reversed.
+    
+    For paired-end data:
+    The relative position of read1 and read2 needs to be determined including
+    orientation relative to each other.
+    '''
     outfile = IOTools.openFile(outfile, "w")
     samfile = pysam.Samfile(infile)
 
@@ -123,22 +164,10 @@ def getStrandSpecificity(infile, outfile, iterations):
     SF_total = total_percent(SF, total)
     SR_total = total_percent(SR, total)
 
-    outfile.write("MSR:%s\tISR:%s\tOSR:%s\tISF:%s\tMSF:%s\tOSF:%s\n" % \
-        (MSR_total, ISR_total, OSR_total, ISF_total, MSF_total, OSF_total))
-    outfile.write("SF:%s\tSR:%s\n" % (SF_total, SR_total))
-
-
-# I think this function is no longer used - check
-#def getNumReadsFromReadsFile(infile):
-#    '''get number of reads from a .nreads file.'''
-#    with IOTools.openFile(infile) as inf:
-#        line = inf.readline()
-#        if not line.startswith("nreads"):
-#            raise ValueError(
-#                "parsing error in file '%s': "
-#                "expected first line to start with 'nreads'")
-#        nreads = int(line[:-1].split("\t")[1])
-#    return nreads
+    outfile.write("MSR\tISR\tOSR\tISF\tMSF\tOSF\tSF\tSR\n")
+    outfile.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % \
+        (MSR_total, ISR_total, OSR_total, ISF_total, MSF_total, OSF_total,
+        SF_total, SR_total))
 
 
 def buildPicardInsertSizeStats(infile, outfile, genome_file):
@@ -498,6 +527,47 @@ def loadTranscriptProfile(infiles, outfile,
            options="--add-index=bin")
 
     os.unlink(outf.name)
+
+
+def loadStrandSpecificity(infiles, outfile,
+                          suffix="strand",
+                          tablename=None):
+    '''
+    '''
+
+    if not tablename:
+        tablename = "%s_%s" % (P.toTable(outfile), suffix)
+
+    outf = P.getTempFile(".")
+    
+    table_count = 0
+    table_join = None
+
+    for infile in infiles:
+        name = P.snip(os.path.basename(infile), ".strand")
+
+        table = pd.read_csv(infile, sep="\t")
+        table["track"] = name
+
+        if table_count == 0:
+            table_join = table
+            table_count += 1
+        else:
+            table_join = table.merge(table_join,
+                                     on=["MSR", "ISR", "OSR", "ISF", "MSF", "OSF", "SF", "SR", "track"],
+                                     how="outer")
+
+    table_join.to_csv(outf, sep="\t", index=False)
+
+    outf.close()
+    
+    P.load(infile=outf.name,
+           outfile=outfile,
+           tablename=tablename,
+           options="--add-index=track")
+
+    os.unlink(outf.name)
+
 
 def loadCountReads(infiles, outfile,
                    suffix="nreads",
