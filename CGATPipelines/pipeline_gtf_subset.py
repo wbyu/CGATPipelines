@@ -5,7 +5,68 @@ Gtf_subset pipeline
 
 This pipeline generates a number of GTF files that can be used with downstream
 CGAT pipelines. The user will download a GTF from ENSEMBL and then the GTF is
-parsed and filtered.
+parsed and filtered.In addition to downloading an ensembl GTF the user will
+need to download an assembly report for their specific genome and add it to the
+directory the pipeline is ran.
+
+Overview
+========
+
+Principle targets
+-----------------
+
+Configuration
+-------------
+
+
+On top of the default CGAT setup, the pipeline requires the following
+software to be in the path:
+
+Input
+-----
+This pipeline requires a Ensembl GTF and an assembly report.
+
+Ensembl GTF:
+    This can be downloaded from ...
+
+Assembly report:
+    This is downloaded from the ncbi assembly page for your specific genome.
+    Using hg19 as an example:
+        Navigate to www......
+        From the database tab select assembly and add your genome into the
+        search bar i.e. hg19.
+        Then click the link "Download the full sequence report"
+        Add it to the folder where the pipeline will be ran
+
+
+
+
+
+Pipeline output
+===============
+
+Example
+=======
+
+
+
+
+
+
+
+
+
+
+
+
+
+Requirements:
+
+
+
+
+
+
 
 ====
 Code
