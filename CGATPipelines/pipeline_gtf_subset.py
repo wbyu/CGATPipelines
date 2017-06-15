@@ -27,8 +27,10 @@ information how to use CGAT pipelines.
 
 Principle targets
 -----------------
-full
 
+
+full
+   This will run the entire pipeline
 
 
 Configuration
