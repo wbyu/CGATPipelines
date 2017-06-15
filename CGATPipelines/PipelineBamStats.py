@@ -41,6 +41,7 @@ import CGATPipelines.Pipeline as P
 
 PICARD_MEMORY = "5G"
 
+
 def getNumReadsFromReadsFile(infile):
     '''get number of reads from a .nreads file.'''
     with IOTools.openFile(infile) as inf:
@@ -52,6 +53,7 @@ def getNumReadsFromReadsFile(infile):
         nreads = int(line[:-1].split("\t")[1])
     return nreads
 
+
 def getStrandSpecificity(infile, outfile, iterations):
 
     '''
@@ -62,11 +64,11 @@ def getStrandSpecificity(infile, outfile, iterations):
     http://salmon.readthedocs.io/en/latest/library_type.html
 
     The code relies heavily on pysam to determin read orientation.
-    
+
     For single-end data:
     Determining which read the strand is on is straightforward using pysam
     function .is_reversed.
-    
+
     For paired-end data:
     The relative position of read1 and read2 needs to be determined including
     orientation relative to each other.
@@ -98,34 +100,33 @@ def getStrandSpecificity(infile, outfile, iterations):
                 if read.qname in reads_processed:
                     pass
                 else:
-                
+
                     # get attributes of read
                     read_start = read.reference_start
                     read_end = read.reference_end
                     read_neg = read.is_reverse
 
-
                     # specify which read is R1 and which is R2:
                     # specify which read is R1 and which is R2:
-                    if read.is_read1 == True:
+                    if read.is_read1 is True:
                         R1_is_reverse = read.is_reverse
                         R1_reference_start = read.reference_start
-                        
+
                         R2_is_reverse = read.mate_is_reverse
                         R2_reference_start = read.next_reference_start
                     else:
                         R1_is_reverse = read.mate_is_reverse
                         R1_reference_start = read.next_reference_start
-                    
+
                         R2_is_reverse = read.is_reverse
                         R2_reference_start = read.reference_start
 
                         # Decision tree to specify strandness:
                         # potential to convert this to a machine learning
                         # decision tree algorithm in the future:
-                    if R1_is_reverse == True:
+                    if R1_is_reverse is True:
 
-                        if R2_is_reverse == True:
+                        if R2_is_reverse is True:
 
                             MSF += 1
                         else:
@@ -136,8 +137,10 @@ def getStrandSpecificity(infile, outfile, iterations):
 
                     else:
 
-                        if R2_is_reverse == True:
-                            if R1_reference_start - R2_reference_start >=0:
+                        if R2_is_reverse is True:
+
+                            if R1_reference_start - R2_reference_start >= 0:
+
                                 OSF += 1
                             else:
                                 ISF += 1
@@ -165,9 +168,9 @@ def getStrandSpecificity(infile, outfile, iterations):
     SR_total = total_percent(SR, total)
 
     outfile.write("MSR\tISR\tOSR\tISF\tMSF\tOSF\tSF\tSR\n")
-    outfile.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % \
-        (MSR_total, ISR_total, OSR_total, ISF_total, MSF_total, OSF_total,
-        SF_total, SR_total))
+    outfile.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" %
+                  (MSR_total, ISR_total, OSR_total, ISF_total, MSF_total, OSF_total,
+                   SF_total, SR_total))
 
 
 def buildPicardInsertSizeStats(infile, outfile, genome_file):
@@ -520,7 +523,7 @@ def loadTranscriptProfile(infiles, outfile,
     table_join.to_csv(outf, sep="\t", index=False)
 
     outf.close()
-    
+
     P.load(infile=outf.name,
            outfile=outfile,
            tablename=tablename,
@@ -539,7 +542,7 @@ def loadStrandSpecificity(infiles, outfile,
         tablename = "%s_%s" % (P.toTable(outfile), suffix)
 
     outf = P.getTempFile(".")
-    
+
     table_count = 0
     table_join = None
 
@@ -560,7 +563,7 @@ def loadStrandSpecificity(infiles, outfile,
     table_join.to_csv(outf, sep="\t", index=False)
 
     outf.close()
-    
+
     P.load(infile=outf.name,
            outfile=outfile,
            tablename=tablename,
@@ -619,6 +622,7 @@ def loadCountReads(infiles, outfile,
            options="--add-index=track")
 
     os.unlink(outf.name)
+
 
 def loadPicardMetrics(infiles, outfile, suffix,
                       pipeline_suffix=".picard_stats",
