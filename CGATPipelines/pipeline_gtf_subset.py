@@ -810,7 +810,8 @@ def buildGenomicContext(infiles, outfile):
          buildNonCodingExonTranscript,
          buildLincRNAExonTranscript,
          loadTranscripts,
-         loadRepeats)
+         loadRepeats,
+         buildGenomicContext)
 def full():
     '''build all targets - A dummy task to run the pipeline to
     completion.'''
