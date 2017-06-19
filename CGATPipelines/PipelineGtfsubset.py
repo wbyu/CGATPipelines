@@ -68,7 +68,7 @@ class SubsetGTF():
 class SubsetGFF3():
 
     def __init__(self, infile, *args, **kwargs):
-        self.gff = GFF3.flat_file_iterator(IOTools.openFile(infile, "r"))
+        self.gff = GFF3.flat_file_iterator(infile)
 
     def makeLineDict(self, line):
         D = line.asDict()
