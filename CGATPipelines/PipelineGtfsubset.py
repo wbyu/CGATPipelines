@@ -10,10 +10,10 @@ Reference
 import CGAT.Experiment as E
 import os
 import MySQLdb
+import pysam
 import CGAT.IOTools as IOTools
 import CGAT.GTF as GTF
 import CGATPipelines.Pipeline as P
-import CGAT.GFF3 as GFF3
 
 
 class SubsetGTF():
@@ -68,10 +68,11 @@ class SubsetGTF():
 class SubsetGFF3():
 
     def __init__(self, infile, *args, **kwargs):
-        self.gff = GFF3.flat_file_iterator(infile)
+        self.gff = pysam.tabix_iterator(IOTools.openFile(infile),
+                                        parser=pysam.asGFF3())
 
     def makeLineDict(self, line):
-        D = line.asDict()
+        D = line.attribute_string2dict(line.attributes)
         D['chrom'] = line.contig
         D['source'] = line.source
         D['feature'] = line.feature
@@ -79,7 +80,6 @@ class SubsetGFF3():
         D['end'] = line.end
         D['score'] = line.score
         D['strand'] = line.strand
-        D['frame'] = line.frame
 
         return D
 
@@ -88,10 +88,8 @@ class SubsetGFF3():
         with IOTools.openFile(outfile, "w") as outf:
             for line in self.gff:
                 D = self.makeLineDict(line)
-                if len(filteritem) == 1:
-                    if D[filteroption] == filteritem[0]:
-                        outf.write("%s\n" % str(line))
-
+                if D[filteroption] == filteritem[0]:
+                    outf.write("%s\n" % str(line))
         outf.close()
 
 
