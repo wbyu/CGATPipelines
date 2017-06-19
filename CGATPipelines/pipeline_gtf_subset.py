@@ -711,7 +711,7 @@ def loadRepeats(infile, outfile):
 # ---------------------------------------------------------------
 # miRBase annotations
 
-
+@follows(mkdir("mirbase.dir"))
 @transform(PARAMS['mirbase_filename_mir_gff'],
            suffix(PARAMS['mirbase_filename_mir_gff']),
            PARAMS['interface_geneset_primary_mir_gff'])
@@ -756,29 +756,23 @@ def buildmiRNonPrimaryTranscript(infile, outfile):
     m.filterGFF3(outfile, filteroption, filteritem)
 
 
-# Need to write this once andreas has sorted out the GTF parsing option in
-# pysam
 @transform((buildmiRPrimaryTranscript,
             buildmiRNonPrimaryTranscript),
            suffix(".gff3.gz"), "_gff3.load")
 def loadmiRNATranscripts(infile, outfile):
-    '''load transcripts from a GTF file into the database.
-
-    The table will be indexed on ``gene_id`` and ``transcript_id``
+    '''load transcripts from a GFF3 file into the database.
 
     Arguments
     ---------
     infile : string
-       ENSEMBL geneset in :term:`gtf` format.
+       ENSEMBL geneset in :term:`gff3` format.
     outfile : string
        Logfile. The table name is derived from `outfile`.
 
     '''
     load_statement = P.build_load_statement(
         P.toTable(outfile),
-        options="--add-index=gene_id "
-        "--add-index=transcript_id "
-        "--allow-empty-file ")
+        options="--allow-empty-file ")
 
     statement = '''
     zcat %(infile)s
@@ -811,7 +805,8 @@ def buildGenomicContext(infiles, outfile):
          buildLincRNAExonTranscript,
          loadTranscripts,
          loadRepeats,
-         buildGenomicContext)
+         buildGenomicContext,
+         loadmiRNATranscripts)
 def full():
     '''build all targets - A dummy task to run the pipeline to
     completion.'''
