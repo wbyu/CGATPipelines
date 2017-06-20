@@ -772,12 +772,15 @@ def loadmiRNATranscripts(infile, outfile):
     '''
     load_statement = P.build_load_statement(
         P.toTable(outfile),
-        options="--allow-empty-file ")
+        options="--allow-empty-file "
+        "--header-names=feature,Name")
 
     statement = '''
-    zcat %(infile)s
-    | cgat gtf2tsv
-    | %(load_statement)s
+    cat %(infile)s
+    | cgat gtf2tsv --is-gff3 --attributes-as-columns 2> /dev/null
+    | grep -v "#"
+    | cut -f3
+    |%(load_statement)s
     > %(outfile)s'''
     P.run()
 
