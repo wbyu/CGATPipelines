@@ -809,7 +809,8 @@ def buildGenomicContext(infiles, outfile):
          loadTranscripts,
          loadRepeats,
          buildGenomicContext,
-         loadmiRNATranscripts)
+         loadmiRNATranscripts,
+         loadGeneInformation)
 def full():
     '''build all targets - A dummy task to run the pipeline to
     completion.'''
