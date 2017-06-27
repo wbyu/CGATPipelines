@@ -50,7 +50,8 @@ def getNumReadsFromReadsFile(infile):
             raise ValueError(
                 "parsing error in file '%s': "
                 "expected first line to start with 'nreads'")
-        nreads = int(line[:-1].split("\t")[1])
+        nreads = line.split("\t")[1]
+        nreads = int(nreads)
     return nreads
 
 
