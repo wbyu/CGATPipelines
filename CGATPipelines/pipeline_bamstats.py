@@ -761,7 +761,9 @@ def loadStrandSpecificity(infiles, outfile):
          loadContextStats,
          loadIdxStats,
          loadExonValidation,
-         loadPicardRnaSeqMetrics)
+         loadPicardRnaSeqMetrics,
+	 loadTranscriptProfile,
+	 loadStrandSpecificity)
 def full():
     pass
 
