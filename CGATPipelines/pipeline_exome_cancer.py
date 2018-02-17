@@ -159,6 +159,7 @@ import CGATPipelines.PipelineMappingQC as PipelineMappingQC
 import CGATPipelines.Pipeline as P
 import re
 import CGATPipelines.PipelineExome as PipelineExome
+import CGATPipelines.PipelineBamStats as PipelineBamStats
 
 USECLUSTER = True
 
@@ -174,6 +175,10 @@ def connect():
     dbh = sqlite3.connect(PARAMS["database_name"])
 
     return dbh
+
+
+def getGATKOptions():
+    return "-l job_memory=1.4G"
 
 
 #########################################################################
@@ -247,28 +252,49 @@ def mapReads(infile, outfile):
     print(statement)
     P.run()
 
-
-@merge(mapReads, "picard_duplicate_stats.load")
-def loadPicardDuplicateStats(infiles, outfile):
-    '''Merge Picard duplicate stats into single table and load into SQLite.'''
-    PipelineMappingQC.loadPicardDuplicateStats(infiles, outfile)
-
-
 #########################################################################
 # Post-alignment QC
 #########################################################################
 
+@transform(mapReads,
+           regex("bam/(.*).bam$"),
+           r"bam/\1.dedup.bam")
+def dedup(infile, outfile):
+    '''Get duplicate stats from picard MarkDuplicates '''
+    PipelineBamStats.buildPicardDuplicateStats(infile, outfile)
 
-@follows(mapReads)
+@follows(dedup)
+@merge("bam/*.bam", "picard_duplicate_stats.load")
+def loadPicardDuplicateStats(infiles, outfile):
+    '''Merge Picard duplicate stats into single table and load into SQLite.'''
+    PipelineBamStats.loadPicardDuplicateStats(infiles, outfile)
+
+#########################################################################
+
+@transform(dedup,
+           regex("bam/(.*).bam$"),
+           add_inputs(os.path.join(PARAMS["bwa_index_dir"],
+                                   PARAMS["genome"])),
+           r"bam/\1.picard_stats")
+def buildPicardAlignStats(infiles, outfile):
+    ''' build Picard alignment stats '''
+    infile, reffile = infiles
+
+    PipelineBamStats.buildPicardAlignmentStats(infile,
+                                               outfile,
+                                               reffile)
+
+
+@follows(buildPicardAlignStats)
 @merge("bam/*.picard_stats", "picard_stats.load")
 def loadPicardAlignStats(infiles, outfile):
     '''Merge Picard alignment stats into single table and load into SQLite.'''
-    PipelineMappingQC.loadPicardAlignmentStats(infiles, outfile)
+    PipelineBamStats.loadPicardAlignmentStats(infiles, outfile)
 
 #########################################################################
 
 
-@transform(mapReads, regex(r"bam/(\S+).bam"), r"bam/\1.cov")
+@transform(dedup, regex(r"bam/(\S+).dedup.bam"), r"bam/\1.dedup.cov")
 def buildCoverageStats(infile, outfile):
     '''Generate coverage statistics for regions of interest from a
        bed file using Picard'''
@@ -292,16 +318,16 @@ def buildCoverageStats(infile, outfile):
                 '''
     P.run()
 
-    PipelineMappingQC.buildPicardCoverageStats(
+    PipelineBamStats.buildPicardCoverageStats(
         infile, outfile, modified_baits, modified_baits)
 
-    IOTools.zapFile(modified_baits)
+    #IOTools.zapFile(modified_baits)
 
 
 @follows(buildCoverageStats)
 @merge(buildCoverageStats, "coverage_stats.load")
 def loadCoverageStats(infiles, outfile):
-    PipelineMappingQC.loadPicardCoverageStats(infiles, outfile)
+    PipelineBamStats.loadPicardCoverageStats(infiles, outfile)
 
 #########################################################################
 #########################################################################
@@ -309,14 +335,58 @@ def loadCoverageStats(infiles, outfile):
 # GATK realign bams
 #########################################################################
 
-
-@transform(mapReads,
-           regex(r"bam/(\S+).bam"),
-           r"bam/\1.bqsr.bam")
-def GATKpreprocessing(infile, outfile):
+@follows(loadCoverageStats, mkdir("gatk"))
+@transform(dedup,
+           regex(r"bam/(\S+).dedup.bam"),
+            r"gatk/\1.readgroups.bam")
+def GATKReadGroups(infile, outfile):
+    '''Reorders BAM according to reference fasta and adds read groups using
+    GATK'''
     '''Reorders BAM according to reference fasta and add read groups using
+    SAMtools, realigns around indels and recalibrates base quality
+    scores using GATK
+
+    '''
+
+    track = re.sub(r'-\w+-\w+\.bam', '', os.path.basename(infile))
+    tmpdir_gatk = P.getTempDir('.')
+    job_options = getGATKOptions()
+    job_threads = PARAMS["gatk_threads"]
+    library = PARAMS["readgroup_library"]
+    platform = PARAMS["readgroup_platform"]
+    platform_unit = PARAMS["readgroup_platform_unit"]
+    genome = PARAMS["bwa_index_dir"] + PARAMS["genome"] 
+    
+    PipelineExome.GATKReadGroups(infile, outfile, genome,
+                                 library, platform,
+                                 platform_unit, track)
+    #IOTools.zapFile(infile)
+    
+    
+###############################################################################
+
+
+@transform(GATKReadGroups,
+           regex(r"gatk/(\S+).readgroups.bam"),
+           r"gatk/\1.bqsr.bam")
+def GATKBaseRecal(infile, outfile):
+    '''recalibrates base quality scores using GATK'''
+    #intrack = P.snip(os.path.basename(infile), ".bam")
+    #outtrack = P.snip(os.path.basename(outfile), ".bam")
+    dbsnp = PARAMS["gatk_dbsnp"]
+    solid_options = PARAMS["gatk_solid_options"]
+    genome = PARAMS["bwa_index_dir"] + PARAMS["genome"] 
+    intervals = PARAMS["roi_intervals"]
+    padding = PARAMS["roi_padding"]
+    
+    PipelineExome.GATKBaseRecal(infile, outfile, genome, intervals,
+                                    padding, dbsnp, solid_options)
+   # IOTools.zapFile(infile)
+    
+'''def GATKpreprocessing(infile, outfile):
+    Reorders BAM according to reference fasta and add read groups using
        SAMtools, realigns around indels and recalibrates base quality scores
-       using GATK'''
+       using GATK
 
     to_cluster = USECLUSTER
     track = P.snip(os.path.basename(infile), ".bam")
@@ -334,18 +404,18 @@ def GATKpreprocessing(infile, outfile):
                                  PARAMS["readgroup_platform"],
                                  PARAMS["readgroup_platform_unit"])
 
-    PipelineExome.GATKIndelRealign(outfile1, outfile2, genome,
-                                   PARAMS["gatk_threads"])
+    #PipelineExome.GATKIndelRealign(outfile1, outfile2, genome,
+                                   #PARAMS["gatk_threads"])
 
-    IOTools.zapFile(outfile1)
+    #IOTools.zapFile(outfile1)
 
     PipelineExome.GATKBaseRecal(outfile2, outfile, genome,
                                 PARAMS["gatk_dbsnp"],
                                 PARAMS["gatk_solid_options"])
-    IOTools.zapFile(outfile2)
+    #IOTools.zapFile(outfile2)'''
 
 
-@transform(GATKpreprocessing,
+@transform(GATKBaseRecal,
            regex("bam/(\S+)-%s-(\d+).bqsr.bam" % PARAMS["sample_control"]),
            r"bam/\1-%s-\2.merged.bam" % PARAMS["sample_control"])
 def mergeSampleBams(infile, outfile):
@@ -404,8 +474,8 @@ def mergeSampleBams(infile, outfile):
     statement += '''rm -rf %(tmpdir_gatk)s ;
                     checkpoint ; '''
     P.run()
-    IOTools.zapFile(infile)
-    IOTools.zapFile(infile_tumor)
+    #IOTools.zapFile(infile)
+    #IOTools.zapFile(infile_tumor)
 
 
 @transform(mergeSampleBams,
@@ -1157,20 +1227,6 @@ def loadMutationalSignature(infiles, outfile):
 #########################################################################
 #########################################################################
 
-@follows(loadManualAnnotations,
-         loadMutectFilteringSummary,
-         loadMutectExtendedOutput,
-         loadVariantAnnotation,
-         loadCoverageStats,
-         loadPicardRealigenedAlignStats,
-         loadPicardAlignStats,
-         loadNCG,
-         loadMutationalSignature,
-         loadEBioInfo,
-         intersectHeatmap)
-def full():
-    pass
-
 
 @follows(defineEBioStudies)
 def test():
@@ -1195,7 +1251,9 @@ def mapping():
     pass
 
 
-@follows(loadPicardDuplicateStats,
+@follows(dedup,
+         loadPicardDuplicateStats,
+         buildPicardAlignStats,
          loadPicardAlignStats,
          buildCoverageStats,
          loadCoverageStats)
@@ -1203,8 +1261,8 @@ def postMappingQC():
     pass
 
 
-@follows(GATKpreprocessing,
-         runPicardOnRealigned)
+@follows(GATKReadGroups,
+         GATKBaseRecal)
 def gatk():
     pass
 
@@ -1225,6 +1283,21 @@ def tabulation():
 def vcfstats():
     pass
 
+
+@follows(postMappingQC,
+         loadManualAnnotations,
+         loadMutectFilteringSummary,
+         loadMutectExtendedOutput,
+         loadVariantAnnotation,
+         loadCoverageStats,
+         loadPicardRealigenedAlignStats,
+         loadPicardAlignStats,
+         loadNCG,
+         loadMutationalSignature,
+         loadEBioInfo,
+         intersectHeatmap)
+def full():
+    pass
 
 #########################################################################
 #########################################################################
