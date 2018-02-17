@@ -391,7 +391,7 @@ def buildPicardCoverageStats(infile, outfile, baits, regions):
         P.touch(outfile)
         return
 
-    statement = '''picard %(picard_opts)s CalculateHsMetrics
+    statement = '''picard %(picard_opts)s CollectHsMetrics
     BAIT_INTERVALS=%(baits)s
     TARGET_INTERVALS=%(regions)s
     INPUT=%(infile)s
