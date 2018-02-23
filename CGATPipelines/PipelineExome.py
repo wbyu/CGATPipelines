@@ -230,6 +230,67 @@ def mutectSNPCaller(infile, outfile, mutect_log, genome, cosmic,
 ##############################################################################
 
 
+
+def mutect2SNPCaller(infile, outfile, mutect_log, genome, roi_intervals, mutect_cosmic,
+                    mutect_dbsnp, call_stats_out, job_memory, job_threads,
+                    quality=20, max_alt_qual=150, max_alt=5,
+                    max_fraction=0.05, tumor_LOD=6.3, strand_LOD=2,
+                    normal_panel=None,
+                    infile_matched=None,
+                    gatk_key=None,
+                    artifact=False):
+    '''Call SNVs using Broad's muTect'''
+    # TS. this is currently CGAT specific. How to generalise?
+
+    job_memory_java = job_memory.lower()
+    job_threads = 1
+    
+    statement = '''GenomeAnalysisTK
+                   -T MuTect2
+                   -R %(genome)s
+                   -I:tumor %(infile)s
+                   -I:normal %(infile)s
+                   --dbsnp %(dbsnp)s
+                   --cosmic %(cosmic)
+                   -L %(roi_intervals)s
+                   -o %(outfile)s'''  % locals()
+    
+    #statement = 
+    '''module load apps/java/jre1.6.0_26;
+                   java -Xmx%(job_memory_java)s -jar
+                   /ifs/apps/bio/muTect-1.1.4/muTect-1.1.4.jar
+                   --analysis_type MuTect
+                   --reference_sequence %(genome)s
+                   --cosmic %(cosmic)s
+                   --dbsnp %(dbsnp)s
+                   --input_file:tumor %(infile)s
+                   --out %(call_stats_out)s
+                   --enable_extended_output
+                   --vcf %(outfile)s ''' 
+                   #% locals()
+    if artifact:
+        statement += ''' --artifact_detection_mode '''
+
+    if infile_matched:
+        statement += '''--min_qscore %(quality)s
+                        --gap_events_threshold 2
+                        --max_alt_alleles_in_normal_qscore_sum %(max_alt_qual)s
+                        --max_alt_alleles_in_normal_count %(max_alt)s
+                        --max_alt_allele_in_normal_fraction %(max_fraction)s
+                        --tumor_lod %(tumor_LOD)s
+                        --input_file:normal %(infile_matched)s ''' % locals()
+    if normal_panel:
+        statement += ''' --normal_panel %(normal_panel)s ''' % locals()
+
+    if gatk_key:
+        statement += " -et NO_ET -K %(gatk_key)s " % locals()
+
+    statement += " > %(mutect_log)s " % locals()
+
+    P.run()
+
+##############################################################################
+
 def strelkaINDELCaller(infile_control, infile_tumor, outfile, genome, config,
                        outdir, job_memory, job_threads):
     '''Call INDELs using Strelka'''
