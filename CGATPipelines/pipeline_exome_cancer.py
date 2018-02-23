@@ -415,140 +415,6 @@ def GATKBaseRecal(infile, outfile):
     #IOTools.zapFile(outfile2)'''
 
 
-@transform(GATKBaseRecal,
-           regex("bam/(\S+)-%s-(\d+).bqsr.bam" % PARAMS["sample_control"]),
-           r"bam/\1-%s-\2.merged.bam" % PARAMS["sample_control"])
-def mergeSampleBams(infile, outfile):
-    '''merge control and tumor bams'''
-    # Note: need to change readgroup headers for merge and subsequent
-    # splitting of bam files
-    to_cluster = USECLUSTER
-    job_memory = PARAMS["gatk_memory"]
-
-    tmpdir_gatk = P.getTempDir(shared=True)
-
-    outfile_tumor = outfile.replace(
-        PARAMS["sample_control"], PARAMS["sample_tumour"])
-    infile_tumor = infile.replace(
-        PARAMS["sample_control"], PARAMS["sample_tumour"])
-
-    infile_base = os.path.basename(infile)
-    infile_tumor_base = infile_base.replace(
-        PARAMS["sample_control"], PARAMS["sample_tumour"])
-
-    track = P.snip(os.path.basename(infile), ".bam")
-    track_tumor = track.replace(
-        PARAMS["sample_control"], PARAMS["sample_tumour"])
-
-    library = PARAMS["readgroup_library"]
-    platform = PARAMS["readgroup_platform"]
-    platform_unit = PARAMS["readgroup_platform_unit"]
-
-    control_id = "Control.bam"
-    tumor_id = control_id.replace(
-        PARAMS["sample_control"], PARAMS["sample_tumour"])
-
-    statement = '''picard AddOrReplaceReadGroups
-                    INPUT=%(infile)s
-                    OUTPUT=%(tmpdir_gatk)s/%(infile_base)s
-                    RGLB=%(library)s RGPL=%(platform)s
-                    RGPU=%(platform_unit)s RGSM=%(track)s
-                    ID=%(track)s
-                    VALIDATION_STRINGENCY=SILENT ;
-                    checkpoint ;'''
-    statement += '''picard AddOrReplaceReadGroups
-                    INPUT=%(infile_tumor)s
-                    OUTPUT=%(tmpdir_gatk)s/%(infile_tumor_base)s
-                    RGLB=%(library)s RGPL=%(platform)s
-                    RGPU=%(platform_unit)s RGSM=%(track_tumor)s
-                    ID=%(track_tumor)s
-                    VALIDATION_STRINGENCY=SILENT ;
-                    checkpoint ;'''
-    statement += '''samtools merge -rf
-                    %(outfile)s
-                    %(tmpdir_gatk)s/%(infile_base)s
-                    %(tmpdir_gatk)s/%(infile_tumor_base)s
-                    ; checkpoint ;'''
-    statement += '''samtools index %(outfile)s ;
-                    checkpoint ;'''
-    statement += '''rm -rf %(tmpdir_gatk)s ;
-                    checkpoint ; '''
-    P.run()
-    #IOTools.zapFile(infile)
-    #IOTools.zapFile(infile_tumor)
-
-
-@transform(mergeSampleBams,
-           regex("bam/(\S+)-%s-(\d+).merged.bam" % PARAMS["sample_control"]),
-           r"bam/\1-%s-\2.realigned.bqsr.bam" % PARAMS["sample_control"])
-def realignMatchedSample(infile, outfile):
-    ''' repeat realignments with merged bam of control and tumor
-        this should help avoid problems with sample-specific realignments'''
-
-    genome = "%s/%s.fa" % (PARAMS["bwa_index_dir"],
-                           PARAMS["genome"])
-
-    PipelineExome.GATKIndelRealign(infile, outfile, genome)
-
-    IOTools.zapFile(infile)
-
-
-@transform(realignMatchedSample,
-           regex("bam/(\S+)-%s-(\d+).realigned.bqsr.bam" %
-                 PARAMS["sample_control"]),
-           r"bam/\1-%s-\2.realigned.split.bqsr.bam" % PARAMS["sample_control"])
-def splitMergedRealigned(infile, outfile):
-    ''' split realignment file and truncate intermediate bams'''
-
-    track = P.snip(os.path.basename(infile), ".realigned.bqsr.bam") + ".bqsr"
-    track_tumor = track.replace(
-        PARAMS["sample_control"], PARAMS["sample_tumour"])
-    outfile_tumor = outfile.replace(
-        PARAMS["sample_control"], PARAMS["sample_tumour"])
-
-    statement = '''samtools view -hb %(infile)s
-                   -r %(track)s > %(outfile)s;
-                   samtools view -hb %(infile)s
-                   -r %(track_tumor)s > %(outfile_tumor)s; checkpoint ;
-                   samtools index %(outfile)s;
-                   samtools index %(outfile_tumor)s; checkpoint;'''
-    P.run()
-    IOTools.zapFile(infile)
-
-
-@transform(splitMergedRealigned,
-           regex("bam/(\S+)-%s-(\S+).realigned.split.bqsr.bam" %
-                 PARAMS["sample_control"]),
-           r"bam/\1-%s-\2.realigned.picard_stats" % PARAMS["sample_control"])
-def runPicardOnRealigned(infile, outfile):
-    to_cluster = USECLUSTER
-    job_memory = PARAMS["gatk_memory"]
-
-    tmpdir_gatk = P.getTempDir()
-
-    outfile_tumor = outfile.replace(
-        PARAMS["sample_control"], PARAMS["sample_tumour"])
-    infile_tumor = infile.replace(
-        PARAMS["sample_control"], PARAMS["sample_tumour"])
-
-    track = P.snip(os.path.basename(infile), ".bam")
-    track_tumor = track.replace(
-        PARAMS["sample_control"], PARAMS["sample_tumour"])
-
-    genome = "%s/%s.fa" % (PARAMS["bwa_index_dir"],
-                           PARAMS["genome"])
-
-    PipelineMappingQC.buildPicardAlignmentStats(infile, outfile, genome)
-    PipelineMappingQC.buildPicardAlignmentStats(infile_tumor,
-                                                outfile_tumor, genome)
-
-
-@follows(runPicardOnRealigned)
-@merge("bam/*.realigned.picard_stats", "realigned_picard_stats.load")
-def loadPicardRealigenedAlignStats(infiles, outfile):
-    '''Merge Picard alignment stats into single table and load into SQLite.'''
-    PipelineMappingQC.loadPicardAlignmentStats(infiles, outfile)
-
 #########################################################################
 #########################################################################
 #########################################################################
@@ -557,8 +423,8 @@ def loadPicardRealigenedAlignStats(infiles, outfile):
 
 
 @follows(mkdir("normal_panel_variants"))
-@transform(splitMergedRealigned,
-           regex(r"bam/(\S+)-%s-(\S).realigned.split.bqsr.bam" %
+@transform(GATKBaseRecal,
+           regex(r"gatk/(\S+)-%s-(\S).bqsr.bam" %
                  PARAMS["sample_control"]),
            r"normal_panel_variants/\1_normal_mutect.vcf")
 def callControlVariants(infile, outfile):
@@ -568,14 +434,15 @@ def callControlVariants(infile, outfile):
     call_stats_out = basename + "_call_stats.out"
     mutect_log = basename + ".log"
 
-    cosmic, dbsnp, = (PARAMS["mutect_cosmic"],
-                      PARAMS["gatk_dbsnp"])
+    cosmic, dbsnp = (PARAMS["mutect_cosmic"],
+                      PARAMS["mutect_dbsnp"])
+    roi_intervals = (PARAMS["roi_intervals"])
 
     genome = "%s/%s.fa" % (PARAMS["bwa_index_dir"],
                            PARAMS["genome"])
 
-    PipelineExome.mutectSNPCaller(infile, outfile, mutect_log, genome, cosmic,
-                                  dbsnp, call_stats_out, PARAMS[
+    PipelineExome.mutect2SNPCaller(infile, outfile, mutect_log, genome, roi_intervals, 
+                    cosmic, dbsnp, call_stats_out, PARAMS[
                                       'mutect_memory'],
                                   PARAMS['mutect_threads'], artifact=True)
 
