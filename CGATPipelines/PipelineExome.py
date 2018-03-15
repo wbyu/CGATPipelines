@@ -30,7 +30,7 @@ PARAMS = {}
 
 
 def getGATKOptions():
-    return "-l mem_free=1.4G"
+    return "-l job_memory=1.4G"
 
 
 def makeSoup(address):
@@ -231,22 +231,23 @@ def mutectSNPCaller(infile, outfile, mutect_log, genome, cosmic,
 
 
 
-def MuTect2Caller(infile=None, infile_tumour=None, infile_control=None, outfile, mutect_log,
+def MuTect2Caller(infile, infile_tumour, infile_control, outfile, mutect_log,
                     genome, roi_intervals, cosmic,
-                    dbsnp, call_stats_out, memory, threads,
+                    dbsnp, call_stats_out, job_memory, job_threads,
                     quality=20, max_alt_qual=150, max_alt=5,
                     max_fraction=0.05, tumor_LOD=6.3, strand_LOD=2,
                     normal_panel=None,
+                    infile_matched=None,
                     gatk_key=None,
                     artifact=False):
     '''Call SNVs and indels using Broad's MuTect2'''
     '''Needs GATK3.6 and higher - used GATK3.8-1'''
     # TS. this is currently CGAT specific. How to generalise?
 
-    #job_memory = "4G"
-    #job_threads = 2
+    job_memory_java = job_memory.lower()
+    job_threads = 1
     
-    if artifact & infile:
+    if artifact:
         statement = '''GenomeAnalysisTK
                        -T MuTect2
                        -R %(genome)s
@@ -257,7 +258,7 @@ def MuTect2Caller(infile=None, infile_tumour=None, infile_control=None, outfile,
                        -L %(roi_intervals)s
                        -o %(outfile)s''' % locals()
                        
-    if infile_tumour:
+    else:
         statement = '''GenomeAnalysisTK
                    -T MuTect2
                    -R %(genome)s
@@ -269,7 +270,7 @@ def MuTect2Caller(infile=None, infile_tumour=None, infile_control=None, outfile,
                    -o %(outfile)s''' % locals()
 
 
-    if infile_control:
+    if infile_matched:
         statement += '''--max_alt_alleles_in_normal_qscore_sum %(max_alt_qual)s
                         --max_alt_alleles_in_normal_count %(max_alt)s
                         --max_alt_allele_in_normal_fraction %(max_fraction)s
