@@ -1,3 +1,4 @@
+
 """
 ======================
 Exome Cancer pipeline
@@ -149,6 +150,7 @@ from ruffus import *
 # from rpy2.robjects import r as R
 
 import numpy
+import pandas as pd
 import CGAT.Experiment as E
 import sys
 import os
@@ -197,6 +199,36 @@ PipelineMappingQC.PARAMS = PARAMS
 PipelineExome.PARAMS = PARAMS
 #########################################################################
 
+#######################################################################
+# Check for design file to Match Control and Tumor input BAMs ########
+#######################################################################
+
+# This section checks for the design table and generates:
+# 1. A dictionary, inputD, linking each tumour input file and its matched control,
+# as specified in the design table
+# 2. A pandas dataframe, df, containing the information from the
+#    design table.
+# 3. BAM_tumour: a list of tumour (input) bam file names following the naming guidelines
+# 4. BAM_control: a list of patient matched control bam files.
+
+# if design table is missing the input bams the df will be empty. This gets
+# round the import tests
+
+if os.path.exists("design.tsv"):
+    # read the design table
+    df = pd.read_csv("design.tsv", sep="\t")
+
+    TUMOUR = list(df['BAM_tumour'].values)
+    CONTROL = list(df['BAM_control'].values)
+
+    SAMPLE_DICT = {}
+    
+    for key, value in zip(TUMOUR, CONTROL):
+        SAMPLE_DICT[key] = value
+else:
+    E.warn("design.tsv is not located within the folder")
+    TUMOUR = []
+    CONTROL = []
 
 #########################################################################
 # Load manual annotations
@@ -382,37 +414,6 @@ def GATKBaseRecal(infile, outfile):
     PipelineExome.GATKBaseRecal(infile, outfile, genome, intervals,
                                     padding, dbsnp, solid_options)
    # IOTools.zapFile(infile)
-    
-'''def GATKpreprocessing(infile, outfile):
-    Reorders BAM according to reference fasta and add read groups using
-       SAMtools, realigns around indels and recalibrates base quality scores
-       using GATK
-
-    to_cluster = USECLUSTER
-    track = P.snip(os.path.basename(infile), ".bam")
-    tmpdir_gatk = P.getTempDir()
-    job_memory = PARAMS["gatk_memory"]
-
-    genome = "%s/%s.fa" % (PARAMS["bwa_index_dir"],
-                           PARAMS["genome"])
-
-    outfile1 = outfile.replace(".bqsr", ".readgroups.bqsr")
-    outfile2 = outfile.replace(".bqsr", ".realign.bqsr")
-
-    PipelineExome.GATKReadGroups(infile, outfile1, genome,
-                                 PARAMS["readgroup_library"],
-                                 PARAMS["readgroup_platform"],
-                                 PARAMS["readgroup_platform_unit"])
-
-    #PipelineExome.GATKIndelRealign(outfile1, outfile2, genome,
-                                   #PARAMS["gatk_threads"])
-
-    #IOTools.zapFile(outfile1)
-
-    PipelineExome.GATKBaseRecal(outfile2, outfile, genome,
-                                PARAMS["gatk_dbsnp"],
-                                PARAMS["gatk_solid_options"])
-    #IOTools.zapFile(outfile2)'''
 
 
 #########################################################################
@@ -422,9 +423,9 @@ def GATKBaseRecal(infile, outfile):
 #########################################################################
 
 
-@follows(mkdir("normal_panel_variants"))
+@follows(mkdir("normal_panel_variants", GATKBaseRecal))
 @transform(GATKBaseRecal,
-           regex(r"gatk/(\S+)-%s-(\S).bqsr.bam" %
+           regex(r"gatk/(\S+)-%s-(\S+).bqsr.bam" %
                  PARAMS["sample_control"]),
            r"normal_panel_variants/\1_normal_mutect.vcf")
 def callControlVariants(infile, outfile):
@@ -434,24 +435,24 @@ def callControlVariants(infile, outfile):
     call_stats_out = basename + "_call_stats.out"
     mutect_log = basename + ".log"
 
-    cosmic, dbsnp = (PARAMS["mutect_cosmic"],
-                      PARAMS["mutect_dbsnp"])
-    roi_intervals = (PARAMS["roi_intervals"])
+    cosmic = PARAMS["mutect_cosmic"]
+    dbsnp = PARAMS["mutect_dbsnp"]
+    roi_intervals = PARAMS["roi_intervals"]
+    threads = PARAMS['mutect_threads']
+    memory = PARAMS['mutect_memory']
 
-    genome = "%s/%s.fa" % (PARAMS["bwa_index_dir"],
-                           PARAMS["genome"])
+    genome = PARAMS["bwa_index_dir"] + PARAMS["genome"]
 
-    PipelineExome.mutect2SNPCaller(infile, outfile, mutect_log, genome, roi_intervals, 
-                    cosmic, dbsnp, call_stats_out, PARAMS[
-                                      'mutect_memory'],
-                                  PARAMS['mutect_threads'], artifact=True)
+    PipelineExome.MuTect2Caller(infile, outfile, mutect_log, genome, roi_intervals, 
+                    cosmic, dbsnp, call_stats_out, memory, threads, artifact=True)
 
 
 @transform(callControlVariants,
-           suffix(".vcf"),
-           "_slim.vcf.gz")
+           regex(r"normal_panel_variants/(\S+).vcf"),
+           r"normal_panel_variants/\1_slim.vcf.gz")
 def indexControlVariants(infile, outfile):
     '''index control vcf for intersection by vcftools'''
+    '''tabix is a tool that allows to perform fast interval queries based on tab delimited interval file'''
 
     outfile = P.snip(outfile, ".gz")
 
@@ -466,29 +467,43 @@ def indexControlVariants(infile, outfile):
        "normal_panel_variants/combined.vcf")
 def mergeControlVariants(infiles, outfile):
     ''' intersect control vcfs to generate a panel of normals for mutect'''
+    '''outputs positions present in at least one file'''
     infiles = " ".join(infiles)
 
-    # remove module command when Sebastian has made latest version executable
-
-    statement = '''module load bio/vcftools/0.1.08a;
-                   vcf-isec -o -n +1 %(infiles)s
+    statement = '''module load vcftools/0.1.14;
+                   module load perl;
+                   export PERL5LIB=/package/vcftools/0.1.14/lib/site_perl/5.18.1;
+                   vcf-isec -n +1 %(infiles)s
                    > %(outfile)s'''
     P.run()
 
+@follows(callControlVariants)
+@collate(GATKBaseRecal,
+           regex(r"gatk/(CM[0-9]{4})(\S+).bqsr.bam"),
+           r"gatk/\1.pt")
+def patientID(infiles, outfile):
+    '''makes and empty file for patient ID'''
+    '''patient sample names should start with CM'''
+    '''might need to change it for different patient names'''
 
-@follows(mkdir("variants"), callControlVariants)
-@transform(splitMergedRealigned,
-           regex(r"bam/(\S+)-%s-(\S).realigned.split.bqsr.bam" %
-                 PARAMS["sample_control"]),
-           add_inputs(mergeControlVariants),
-           r"variants/\1.mutect.snp.vcf")
-def runMutect(infiles, outfile):
-    '''calls somatic SNPs using MuTect'''
-    infile, normal_panel = infiles
-    infile_tumour = infile.replace(
-        PARAMS["sample_control"], PARAMS["sample_tumour"])
+    to_cluster = False
+    statement = '''touch %(outfile)s'''
+    
+    P.run()
 
-    basename = P.snip(outfile, ".mutect.snp.vcf")
+@follows(mkdir("variants"), patientID)
+@transform(patientID,
+           regex(r"gatk/(.*).pt"),
+           r"variants/\1.mutect.vcf")
+def runMutect(infile, outfile):
+    '''calls somatic SNPs and indels using MuTect2'''
+    
+    base = P.snip(os.path.basename(infile), ".pt")
+    infile_tumour = base + "-Tumour-R1.bqsr.bam"
+    infile_tumour_key = base + "-Tumour-R1"
+    infile_control = SAMPLE_DICT[infile_tumour_key] + ".bqsr.bam"
+
+    basename = P.snip(outfile, ".mutect.vcf")
     call_stats_out = basename + "_call_stats.out"
     mutect_log = basename + ".log"
 
@@ -498,17 +513,19 @@ def runMutect(infiles, outfile):
          PARAMS["mutect_quality"], PARAMS["mutect_max_alt_qual"],
          PARAMS["mutect_max_alt"], PARAMS["mutect_max_fraction"],
          PARAMS["mutect_lod"], PARAMS["mutect_strand_lod"])
+    
+    threads = PARAMS['mutect_threads']
+    memory = PARAMS['mutect_memory']  
 
-    genome = "%s/%s.fa" % (PARAMS["bwa_index_dir"],
-                           PARAMS["genome"])
+    genome = PARAMS["bwa_index_dir"] + PARAMS["genome"]
 
-    PipelineExome.mutectSNPCaller(
-        infile_tumour, outfile, mutect_log, genome,
+    PipelineExome.MuTect2Caller(
+        infile_tumour, infile_control, outfile, mutect_log, genome,
         cosmic, dbsnp, call_stats_out,
-        PARAMS['mutect_memory'], PARAMS['mutect_threads'],
+        memory, threads,
         quality, max_alt_qual,
         max_alt, max_fraction, tumor_LOD, strand_LOD,
-        normal_panel, infile)
+        infile_matched=True)
 
 
 @transform(runMutect,
@@ -523,8 +540,8 @@ def loadMutectExtendedOutput(infile, outfile):
     P.load(infile, outfile, options="--add-index=%(indices)s" % locals())
 
 
-@transform(splitMergedRealigned,
-           regex(r"bam/(\S+)-%s-(\S).realigned.split.bqsr.bam" %
+@transform(GATKBaseRecal,
+           regex(r"bam/(\S+)-%s-(\S+).realigned.split.bqsr.bam" %
                  PARAMS["sample_control"]),
            r"variants/\1/results/all.somatic.indels.vcf")
 def indelCaller(infile, outfile):
@@ -548,11 +565,11 @@ def indelCaller(infile, outfile):
 ##########################################################################
 # this analysis should be part of an optional check of mutect parameters
 # mutect paramters should be identical to the runMutect function above
-
+# splitMergedRealigned replaced by GATKBaseRecal
 
 @follows(mergeControlVariants)
-@transform(splitMergedRealigned,
-           regex(r"bam/(\S+)-%s-(\S).realigned.split.bqsr.bam" %
+@transform(GATKBaseRecal,
+           regex(r"bam/(\S+)-%s-(\S+).realigned.split.bqsr.bam" %
                  PARAMS["sample_control"]),
            add_inputs(mergeControlVariants),
            r"variants/\1.mutect.reverse.snp.vcf")
@@ -672,7 +689,7 @@ def runMutectOnDownsampled(infiles, outfile):
 ##############################################################################
 
 
-@collate(splitMergedRealigned,
+@collate(GATKBaseRecal,
          regex(r"bam/(\S+)-(\S+)-(\S+).realigned.split.bqsr.bam"),
          r"bam/\1.list")
 def listOfBAMs(infiles, outfile):
@@ -1157,7 +1174,6 @@ def vcfstats():
          loadMutectExtendedOutput,
          loadVariantAnnotation,
          loadCoverageStats,
-         loadPicardRealigenedAlignStats,
          loadPicardAlignStats,
          loadNCG,
          loadMutationalSignature,
